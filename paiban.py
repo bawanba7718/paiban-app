@@ -294,7 +294,12 @@ def download_from_jiananguo():
         else:
             return False, None, "从坚果云下载文件为空或不存在"
             
+    def download_from_jiananguo():
+    try:
+        # （原有下载逻辑，保持不变）
     except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()  # 新增：定义error_detail变量
         return False, None, f"下载失败: {str(e)}\n详细错误:\n{error_detail}"
 
 def create_agent_card(person_info, viewer):
@@ -574,4 +579,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
