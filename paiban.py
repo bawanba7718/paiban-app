@@ -20,14 +20,14 @@ class AgentViewer:
         self.color_roles = {
             'FFC000': 'C席',
             'FFEE79': 'C席',
-            'E2EFDA': 'C席',  # 该颜色的C席有特定休息时间设置
+            'E2EFDA': 'C席',
             '91AADF': 'C席',
             'D9E1F2': 'C席',
             'EF949F': 'B席',
-            'FADADE': 'B席',  # 该颜色的B席有特定休息时间设置
+            'FADADE': 'B席',
             '8CDDFA': '休',
             'FFFF00': '休',
-            'FFFFFF': 'A席',  # 默认白色为A席
+            'FFFFFF': 'A席',  # 无颜色/白色为A席
         }
         
         # 席位颜色映射
@@ -54,7 +54,7 @@ class AgentViewer:
             'T2': {'start': time(20, 0), 'end': time(8, 0), 'name': '夜班',
                   'break_start': None, 'break_end': None},
             'M2': {'start': time(8, 0), 'end': time(17, 0), 'name': '早班',
-                  'break_start': time(14, 0), 'break_end': time(15, 0)},  # 基础设置，会针对特定颜色调整
+                  'break_start': time(14, 0), 'break_end': time(15, 0)},  # 基础设置
             'E2': {'start': time(13, 0), 'end': time(22, 0), 'name': '晚班',
                   'break_start': time(15, 0), 'break_end': time(16, 0)},
             'E3': {'start': time(13, 0), 'end': time(23, 0), 'name': '晚班',
@@ -83,7 +83,7 @@ class AgentViewer:
 
     def get_work_status(self, shift_code, seat, color_code, check_time=None):
         """
-        获取工作状态，新增E2EFDA C席M2和FADADE B席M2的休息时间设置
+        获取工作状态，包含无颜色A席M2班次的休息时间设置
         """
         if not shift_code or str(shift_code).strip() == '':
             return "未排班", "#BFBFBF"
@@ -122,13 +122,18 @@ class AgentViewer:
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
         
-        # 5. 新增：E2EFDA C席M2班次休14:00-15:00
+        # 5. E2EFDA C席M2班次休14:00-15:00
         elif seat == 'C席' and color_code == 'E2EFDA' and main_shift == 'M2':
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
         
-        # 6. 新增：FADADE B席M2班次休13:00-14:00
+        # 6. FADADE B席M2班次休13:00-14:00
         elif seat == 'B席' and color_code == 'FADADE' and main_shift == 'M2':
+            shift['break_start'] = time(13, 0)
+            shift['break_end'] = time(14, 0)
+        
+        # 7. 新增：无颜色（白色）A席M2班次休13:00-14:00
+        elif seat == 'A席' and color_code == 'FFFFFF' and main_shift == 'M2':
             shift['break_start'] = time(13, 0)
             shift['break_end'] = time(14, 0)
             
@@ -221,8 +226,8 @@ class AgentViewer:
                     break
             
             if today_col_idx is None:
-                st.error(f"未找到 {target_date_str} 的排班列")
-                return None
+                st.warning(f"未找到 {target_date_str} 的排班列，可能该日期无排班数据")
+                return pd.DataFrame()
             
             color_data = []
             for row_idx, row in enumerate(main_sheet.iter_rows(min_row=2, values_only=False), start=2):
@@ -409,7 +414,7 @@ def auto_refresh_time(placeholder):
         if current_minute == 0 and not st.session_state.get('hour_refresh_done', False):
             st.session_state.hour_refresh_done = True
             st.session_state.refresh_counter += 1
-            st.session_state.schedule_data = None
+            st.session_state.schedule_data = {}  # 清空所有日期的数据缓存
             st.rerun()
         elif current_minute != 0:
             st.session_state.hour_refresh_done = False
@@ -431,13 +436,13 @@ def main():
     if 'last_refresh' not in st.session_state:
         st.session_state.last_refresh = None
     if 'schedule_data' not in st.session_state:
-        st.session_state.schedule_data = None
+        st.session_state.schedule_data = {}  # 改为字典存储不同日期的数据
     if 'auto_refresh' not in st.session_state:
         st.session_state.auto_refresh = True
     if 'refresh_counter' not in st.session_state:
         st.session_state.refresh_counter = 0
-    if 'last_load_date' not in st.session_state:
-        st.session_state.last_load_date = None
+    if 'selected_date_type' not in st.session_state:
+        st.session_state.selected_date_type = "今日"  # 默认为今日
     if 'hour_refresh_done' not in st.session_state:
         st.session_state.hour_refresh_done = False
     
@@ -459,7 +464,7 @@ def main():
     st.title("📊 综合组在线坐席")
     
     # 顶部控制栏
-    col1, col2, col3 = st.columns([3, 1, 1])
+    col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
     
     with col1:
         current_datetime = st.empty()
@@ -475,7 +480,7 @@ def main():
         if st.button("🔄 刷新状态", use_container_width=True):
             st.session_state.last_refresh = datetime.now(TZ_UTC_8)
             st.session_state.refresh_counter += 1
-            st.session_state.schedule_data = None
+            st.session_state.schedule_data = {}  # 清空所有日期的数据缓存
             st.success("状态已刷新")
     
     with col3:
@@ -485,11 +490,22 @@ def main():
                 if download_success:
                     st.session_state.file_path = file_path
                     st.session_state.last_download = datetime.now(TZ_UTC_8)
-                    st.session_state.schedule_data = None
+                    st.session_state.schedule_data = {}  # 清空所有日期的数据缓存
                     st.session_state.refresh_counter += 1
                     st.success("数据已更新")
                 else:
                     st.error(f"加载失败: {download_message}")
+    
+    # 新增：日期类型选择（昨日、今日、明日）
+    with col4:
+        date_type = st.radio(
+            "选择日期",
+            ["昨日", "今日", "明日"],
+            index=["昨日", "今日", "明日"].index(st.session_state.selected_date_type),
+            horizontal=True,
+            key=f"date_type_{st.session_state.refresh_counter}"
+        )
+        st.session_state.selected_date_type = date_type
     
     st.markdown("---")
     
@@ -508,14 +524,22 @@ def main():
     if info_text:
         st.info(" | ".join(info_text))
     
+    # 根据选择的日期类型计算实际日期
+    today = datetime.now(TZ_UTC_8).date()
+    if st.session_state.selected_date_type == "昨日":
+        view_date = today - timedelta(days=1)
+    elif st.session_state.selected_date_type == "明日":
+        view_date = today + timedelta(days=1)
+    else:  # 今日
+        view_date = today
+    
     # 日期和时段选择
     col_date, col_time = st.columns(2)
     
     with col_date:
-        default_date = datetime.now(TZ_UTC_8).date()
         view_date = st.date_input(
             "选择查看日期", 
-            default_date,
+            view_date,
             key=f"date_{st.session_state.refresh_counter}"
         )
     
@@ -549,27 +573,28 @@ def main():
         load_date = view_date
         st.info(f"当前查看: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')}")
     
-    # 当日期变更时，清除缓存的排班数据
-    if st.session_state.last_load_date != load_date:
-        st.session_state.schedule_data = None
-        st.session_state.last_load_date = load_date
+    # 使用日期字符串作为缓存键
+    load_date_key = load_date.strftime('%Y-%m-%d')
     
-    # 加载排班数据
-    with st.spinner("正在加载坐席数据，请稍候..."):
-        if st.session_state.schedule_data is None:
-            st.session_state.schedule_data = viewer.load_schedule_with_colors(st.session_state.file_path, load_date)
-        schedule_df = st.session_state.schedule_data
+    # 当日期变更时，清除该日期的缓存数据
+    if load_date_key not in st.session_state.schedule_data:
+        with st.spinner(f"正在加载{load_date.strftime('%Y年%m月%d日')}的坐席数据，请稍候..."):
+            st.session_state.schedule_data[load_date_key] = viewer.load_schedule_with_colors(
+                st.session_state.file_path, 
+                load_date
+            )
+    
+    schedule_df = st.session_state.schedule_data[load_date_key]
     
     if schedule_df is None or schedule_df.empty:
-        st.error("未加载到有效坐席数据，请检查文件内容或日期匹配情况。")
-        st.info("请点击顶部的重新加载按钮尝试更新数据")
+        st.warning(f"{load_date.strftime('%Y年%m月%d日')}未找到有效坐席数据")
         return
     
     # 按A/B/C席分类显示坐席
     categorized_data = viewer.categorize_by_seat(schedule_df, view_time)
     
     # 显示各席位在线人数统计
-    st.subheader("📊 坐席统计")
+    st.subheader(f"📊 {view_date.strftime('%Y年%m月%d日')} 坐席统计")
     stats_cols = st.columns(3)
     for i, (seat, agents) in enumerate(categorized_data.items()):
         online_count = sum(1 for agent in agents if agent['status'] == '搬砖中')
