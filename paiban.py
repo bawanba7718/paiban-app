@@ -383,8 +383,6 @@ def main():
         st.session_state.last_load_date = None
     if 'last_auto_refresh' not in st.session_state:
         st.session_state.last_auto_refresh = datetime.now()
-    if 'force_current_time' not in st.session_state:
-        st.session_state.force_current_time = True  # 强制显示当前时段
     
     # 初始化查看器
     viewer = AgentViewer()
@@ -475,19 +473,20 @@ def main():
     # 如果查看时间在0:00-8:00之间，需要加载前一天的排班
     # 否则加载当天的排班
     current_hour = view_time.hour
+    
+    # 修复：确保load_date在任何情况下都有定义
     if current_hour < 8:
         load_date = view_date - timedelta(days=1)
         load_weekday = weekdays[load_date.weekday()]
         st.info(f"当前时间: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')} (显示{load_date.strftime('%Y年%m月%d日')} {load_weekday}的排班数据)")
     else:
+        load_date = view_date  # 确保在else分支中也有定义
         st.info(f"当前时间: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')}")
     
     # 当日期变更时，清除缓存的排班数据
-    if (st.session_state.last_load_date != load_date or 
-        st.session_state.force_current_time):
+    if st.session_state.last_load_date != load_date:
         st.session_state.schedule_data = None
         st.session_state.last_load_date = load_date
-        st.session_state.force_current_time = False  # 重置标志
     
     # 加载排班数据
     with st.spinner("正在加载坐席数据，请稍候..."):
