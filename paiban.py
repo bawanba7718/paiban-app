@@ -1,6 +1,6 @@
 import pandas as pd
 import datetime
-from datetime import datetime, time, timedelta, timezone  # 导入时区相关模块
+from datetime import datetime, time, timedelta, timezone
 import streamlit as st
 import openpyxl
 from openpyxl import load_workbook
@@ -16,13 +16,13 @@ TZ_UTC_8 = timezone(timedelta(hours=8))
 
 class AgentViewer:
     def __init__(self):
-        # 颜色-职位对应关系 - 扩展颜色映射
+        # 颜色-职位对应关系
         self.color_roles = {
             'FFC000': 'C席',
             'FFEE79': 'C席',
             'E2EFDA': 'C席',
             '91AADF': 'C席',
-            'D9E1F2': 'C席',  # 修正为D9E1F2
+            'D9E1F2': 'C席',
             'EF949F': 'B席',
             'FADADE': 'B席',
             '8CDDFA': '休',
@@ -47,7 +47,7 @@ class AgentViewer:
             '未知班次': '❓'
         }
         
-        # 班次时间定义 - 修正B席班次时间
+        # 班次时间定义
         self.shift_times = {
             'T1': {'start': time(8, 0), 'end': time(20, 0), 'name': '白班', 
                   'break_start': time(13, 0), 'break_end': time(14, 0)},
@@ -260,9 +260,24 @@ class AgentViewer:
             else:
                 result['A席'].append(person)
         
-        # 按上班时间早晚排序
+        # 排序逻辑修改：
+        # 1. 优先按状态排序（搬砖中 > 干饭中 > 正在路上 > 已回家）
+        # 2. 相同状态内按上班时间从早到晚排序
+        status_priority = {
+            '搬砖中': 3,
+            '干饭中': 2,
+            '正在路上': 1,
+            '已回家': 0,
+            '未排班': -1,
+            '未知班次': -2
+        }
+        
         for cat in result:
-            result[cat].sort(key=lambda x: self.get_shift_start_time(x['shift']))
+            # 排序键：(状态优先级, 上班开始时间)
+            result[cat].sort(key=lambda x: (
+                -status_priority.get(x['status'], -3),  # 负号表示降序（优先级高的在前）
+                self.get_shift_start_time(x['shift'])
+            ))
         
         return result
     
@@ -310,7 +325,7 @@ def download_from_jiananguo():
         return False, None, f"下载失败: {str(e)}"
 
 def create_agent_card(person_info, viewer):
-    """创建坐席信息卡片 - 修改为根据状态设置卡片背景色"""
+    """创建坐席信息卡片"""
     # 获取状态图标
     status_icon = viewer.status_icons.get(person_info['status'], '❓')
     
@@ -545,7 +560,7 @@ def main():
         st.info("请点击顶部的重新加载按钮尝试更新数据")
         return
     
-    # 按A/B/C席分类显示坐席
+    # 按A/B/C席分类显示坐席（已包含新的排序逻辑）
     categorized_data = viewer.categorize_by_seat(schedule_df, view_time)
     
     # 显示各席位在线人数统计
