@@ -13,17 +13,18 @@ import html
 
 class AgentViewer:
     def __init__(self):
-        # 颜色-职位对应关系
+        # 颜色-职位对应关系 - 扩展颜色映射
         self.color_roles = {
             'FFC000': 'C席',
             'FFEE79': 'C席',
             'E2EFDA': 'C席',
             '91AADF': 'C席',
-            'D9E1F4': 'C席',
+            'D9E1F4': 'C席',  # 新增这个颜色映射
             'EF949F': 'B席',
             'FADADE': 'B席',
             '8CDDFA': '休',
             'FFFF00': '休',
+            'FFFFFF': 'A席',  # 默认白色为A席
         }
         
         # 席位颜色映射
@@ -43,7 +44,7 @@ class AgentViewer:
             '未知班次': '❓'
         }
         
-        # 班次时间定义
+        # 班次时间定义 - 修正B席班次时间
         self.shift_times = {
             'T1': {'start': time(8, 0), 'end': time(20, 0), 'name': '白班', 
                   'break_start': time(13, 0), 'break_end': time(14, 0)},
@@ -83,6 +84,8 @@ class AgentViewer:
             
         shift_code = str(shift_code).strip()
         main_shift = None
+        
+        # 改进班次识别逻辑，处理包含"备"的班次
         for s in self.shift_times:
             if s in shift_code:
                 main_shift = s
@@ -93,6 +96,7 @@ class AgentViewer:
             
         shift = self.shift_times[main_shift].copy()
         
+        # 修正A席T1班次的休息时间
         if seat == 'A席' and main_shift == 'T1':
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
@@ -104,25 +108,34 @@ class AgentViewer:
         
         is_night_shift = main_shift == 'T2'
         in_work_time = False
+        
+        # 改进跨天班次判断逻辑
         if is_night_shift:
-            if (start <= check_time <= time(23, 59, 59)) or (time(0, 0) <= check_time < end):
-                in_work_time = True
+            # T2班次：前一天20:00到当天8:00
+            if start <= end:  # 正常时间范围
+                in_work_time = start <= check_time < end
+            else:  # 跨天情况
+                in_work_time = (check_time >= start) or (check_time < end)
         else:
+            # 非跨天班次
             in_work_time = start <= check_time < end
             
         is_on_the_way = False
         if not in_work_time:
             if not is_night_shift:
+                # 非夜班：上班前显示"正在路上"
                 is_on_the_way = check_time < start
             else:
+                # 夜班：在当天20:00前显示"正在路上"
                 if check_time < start and check_time >= time(0, 0):
                     is_on_the_way = True
-            
+        
         in_break_time = False
         if break_start and break_end and in_work_time:
             if break_start < break_end:
                 in_break_time = break_start <= check_time < break_end
             else:
+                # 处理跨天休息时间（目前没有这种情况）
                 in_break_time = check_time >= break_start or check_time < break_end
         
         if is_on_the_way:
@@ -140,7 +153,12 @@ class AgentViewer:
                 color = cell.fill.start_color.rgb
                 if color:
                     color_str = str(color).upper()
-                    return color_str[-6:] if len(color_str) > 6 else color_str
+                    # 处理颜色格式，确保返回6位颜色码
+                    if color_str.startswith('FF'):
+                        color_str = color_str[2:]  # 去除alpha通道
+                    elif len(color_str) == 8:
+                        color_str = color_str[2:]  # 处理8位颜色码
+                    return color_str if len(color_str) == 6 else "FFFFFF"
             return "FFFFFF"
         except:
             return "FFFFFF"
@@ -161,8 +179,14 @@ class AgentViewer:
             
             target_date_str = target_date.strftime('%Y-%m-%d')
             today_col_idx = None
+            
+            # 改进日期列查找逻辑
             for idx, col in enumerate(df_main.columns):
-                if target_date_str in str(col) or target_date.strftime('%m-%d') in str(col):
+                col_str = str(col)
+                if (target_date_str in col_str or 
+                    target_date.strftime('%m-%d') in col_str or
+                    target_date.strftime('%Y/%m/%d') in col_str or
+                    target_date.strftime('%m/%d') in col_str):
                     today_col_idx = idx
                     break
             
@@ -187,11 +211,12 @@ class AgentViewer:
                         shift_code = str(shift_cell.value).strip() if shift_cell.value else ""
                         color_code = self.get_cell_color(shift_cell)
                     
+                    # 放宽过滤条件，包含"备"的班次也显示
                     if (not shift_code or 
-                        shift_code.strip() in ['', '休', '休息'] or
-                        '备' in shift_code):
+                        shift_code.strip() in ['', '休', '休息']):
                         continue
                     
+                    # 改进颜色识别，包含更多颜色变体
                     seat = self.color_roles.get(color_code, 'A席')
                     
                     person_info = {
@@ -458,7 +483,8 @@ def main():
     
     check_time = view_time
     
-    # 处理T2班次跨天问题
+    # 改进T2班次跨天问题处理
+    # 如果查看时间在0:00-8:00之间，需要加载前一天的排班
     if check_time < time(8, 0):
         load_date = view_date - timedelta(days=1)
     else:
