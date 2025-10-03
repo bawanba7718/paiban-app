@@ -383,6 +383,8 @@ def main():
         st.session_state.last_load_date = None
     if 'last_auto_refresh' not in st.session_state:
         st.session_state.last_auto_refresh = datetime.now()
+    if 'force_current_time' not in st.session_state:
+        st.session_state.force_current_time = True  # 强制显示当前时段
     
     # 初始化查看器
     viewer = AgentViewer()
@@ -428,6 +430,7 @@ def main():
         if st.button("🔄 刷新状态", use_container_width=True):
             st.session_state.last_refresh = datetime.now()
             st.session_state.refresh_counter += 1
+            st.session_state.schedule_data = None  # 清除缓存
             st.success("状态已刷新")
     
     with col3:
@@ -462,6 +465,7 @@ def main():
     # 时间选择组件 - 强制显示当前时段
     col_date, col_time = st.columns(2)
     with col_date:
+        # 强制使用当前日期
         default_date = datetime.now().date()
         view_date = st.date_input(
             "选择查看日期", 
@@ -471,8 +475,6 @@ def main():
     
     with col_time:
         now = datetime.now()
-        current_hour = now.hour
-        current_minute = now.minute
         
         hour_options = [f"{h:02d}:00" for h in range(24)]
         hour_options.insert(0, "当前时段")
@@ -497,7 +499,9 @@ def main():
     
     # 改进T2班次跨天问题处理
     # 如果查看时间在0:00-8:00之间，需要加载前一天的排班
-    if check_time < time(8, 0):
+    # 否则加载当天的排班
+    current_hour = check_time.hour
+    if current_hour < 8:
         load_date = view_date - timedelta(days=1)
     else:
         load_date = view_date
@@ -505,16 +509,18 @@ def main():
     # 显示当前查看时间及实际加载的排班日期
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
     weekday = weekdays[view_date.weekday()]
-    if check_time < time(8, 0):
+    if current_hour < 8:
         load_weekday = weekdays[load_date.weekday()]
         st.info(f"当前查看时间: {view_date.strftime('%Y年%m月%d日')} {weekday} {check_time.strftime('%H:%M')} (显示{load_date.strftime('%Y年%m月%d日')} {load_weekday}的排班数据)")
     else:
         st.info(f"当前查看时间: {view_date.strftime('%Y年%m月%d日')} {weekday} {check_time.strftime('%H:%M')}")
     
     # 当日期变更时，清除缓存的排班数据
-    if st.session_state.last_load_date != load_date:
+    if (st.session_state.last_load_date != load_date or 
+        st.session_state.force_current_time):
         st.session_state.schedule_data = None
         st.session_state.last_load_date = load_date
+        st.session_state.force_current_time = False  # 重置标志
     
     # 加载排班数据
     with st.spinner("正在加载坐席数据，请稍候..."):
