@@ -1,6 +1,6 @@
 import pandas as pd
 import datetime
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone  # 导入时区相关模块
 import streamlit as st
 import openpyxl
 from openpyxl import load_workbook
@@ -10,6 +10,9 @@ import tempfile
 from webdav3.client import Client
 import threading
 import html
+
+# 定义东八区时区（UTC+8）
+TZ_UTC_8 = timezone(timedelta(hours=8))
 
 class AgentViewer:
     def __init__(self):
@@ -101,7 +104,8 @@ class AgentViewer:
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
             
-        check_time = check_time or datetime.now().time()
+        # 使用东八区时间
+        check_time = check_time or datetime.now(TZ_UTC_8).time()
         
         start, end = shift['start'], shift['end']
         break_start, break_end = shift.get('break_start'), shift.get('break_end')
@@ -360,7 +364,7 @@ def create_stat_card(seat, online_count, total_count, color):
 
 def update_current_time():
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
-    now = datetime.now()
+    now = datetime.now(TZ_UTC_8)  # 使用东八区时间
     weekday = weekdays[now.weekday()]
     return now.strftime(f"%Y年%m月%d日 {weekday} %H:%M:%S")
 
@@ -372,7 +376,7 @@ def auto_refresh_time(placeholder):
         placeholder.markdown(f"### 当前时间: {update_current_time()}")
         
         # 检查是否需要整点刷新
-        current_minute = datetime.now().minute
+        current_minute = datetime.now(TZ_UTC_8).minute  # 使用东八区时间
         if current_minute == 0 and not st.session_state.get('hour_refresh_done', False):
             st.session_state.hour_refresh_done = True
             st.session_state.refresh_counter += 1
@@ -417,7 +421,7 @@ def main():
             download_success, file_path, download_message = download_from_jiananguo()
             if download_success:
                 st.session_state.file_path = file_path
-                st.session_state.last_download = datetime.now()
+                st.session_state.last_download = datetime.now(TZ_UTC_8)  # 使用东八区时间
                 # 不显示成功消息
             else:
                 st.error(f"加载失败: {download_message}")
@@ -441,7 +445,7 @@ def main():
     
     with col2:
         if st.button("🔄 刷新状态", use_container_width=True):
-            st.session_state.last_refresh = datetime.now()
+            st.session_state.last_refresh = datetime.now(TZ_UTC_8)  # 使用东八区时间
             st.session_state.refresh_counter += 1
             st.session_state.schedule_data = None  # 清除缓存
             st.success("状态已刷新")
@@ -452,7 +456,7 @@ def main():
                 download_success, file_path, download_message = download_from_jiananguo()
                 if download_success:
                     st.session_state.file_path = file_path
-                    st.session_state.last_download = datetime.now()
+                    st.session_state.last_download = datetime.now(TZ_UTC_8)  # 使用东八区时间
                     st.session_state.schedule_data = None
                     st.session_state.refresh_counter += 1
                     st.success("数据已更新")
@@ -469,7 +473,7 @@ def main():
         info_text.append(f"状态最后刷新: {st.session_state.last_refresh.strftime('%Y-%m-%d %H:%M:%S')}")
     
     # 显示下次自动刷新时间
-    now = datetime.now()
+    now = datetime.now(TZ_UTC_8)  # 使用东八区时间
     next_hour = (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
     info_text.append(f"下次自动刷新: {next_hour.strftime('%H:%M:%S')}")
     
@@ -481,7 +485,7 @@ def main():
     
     with col_date:
         # 日期选择
-        default_date = datetime.now().date()
+        default_date = datetime.now(TZ_UTC_8).date()  # 使用东八区时间
         view_date = st.date_input(
             "选择查看日期", 
             default_date,
@@ -491,7 +495,7 @@ def main():
     with col_time:
         # 时段选择
         hour_options = [f"{h:02d}:00" for h in range(24)]
-        current_hour_str = f"{datetime.now().hour:02d}:00"
+        current_hour_str = f"{datetime.now(TZ_UTC_8).hour:02d}:00"  # 使用东八区时间
         
         # 默认选择当前时段
         default_idx = hour_options.index(current_hour_str) if current_hour_str in hour_options else 0
