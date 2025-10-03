@@ -20,11 +20,11 @@ class AgentViewer:
         self.color_roles = {
             'FFC000': 'C席',
             'FFEE79': 'C席',
-            'E2EFDA': 'C席',  # 该颜色的C席将设置特定休息时间
+            'E2EFDA': 'C席',  # 该颜色的C席有特定休息时间设置
             '91AADF': 'C席',
             'D9E1F2': 'C席',
             'EF949F': 'B席',
-            'FADADE': 'B席',
+            'FADADE': 'B席',  # 该颜色的B席有特定休息时间设置
             '8CDDFA': '休',
             'FFFF00': '休',
             'FFFFFF': 'A席',  # 默认白色为A席
@@ -54,7 +54,7 @@ class AgentViewer:
             'T2': {'start': time(20, 0), 'end': time(8, 0), 'name': '夜班',
                   'break_start': None, 'break_end': None},
             'M2': {'start': time(8, 0), 'end': time(17, 0), 'name': '早班',
-                  'break_start': time(14, 0), 'break_end': time(15, 0)},
+                  'break_start': time(14, 0), 'break_end': time(15, 0)},  # 基础设置，会针对特定颜色调整
             'E2': {'start': time(13, 0), 'end': time(22, 0), 'name': '晚班',
                   'break_start': time(15, 0), 'break_end': time(16, 0)},
             'E3': {'start': time(13, 0), 'end': time(23, 0), 'name': '晚班',
@@ -83,7 +83,7 @@ class AgentViewer:
 
     def get_work_status(self, shift_code, seat, color_code, check_time=None):
         """
-        获取工作状态，新增E2EFDA C席T1班次的休息时间设置
+        获取工作状态，新增E2EFDA C席M2和FADADE B席M2的休息时间设置
         """
         if not shift_code or str(shift_code).strip() == '':
             return "未排班", "#BFBFBF"
@@ -117,10 +117,20 @@ class AgentViewer:
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
         
-        # 4. 新增：E2EFDA C席T1班次休14:00-15:00
+        # 4. E2EFDA C席T1班次休14:00-15:00
         elif seat == 'C席' and color_code == 'E2EFDA' and main_shift == 'T1':
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
+        
+        # 5. 新增：E2EFDA C席M2班次休14:00-15:00
+        elif seat == 'C席' and color_code == 'E2EFDA' and main_shift == 'M2':
+            shift['break_start'] = time(14, 0)
+            shift['break_end'] = time(15, 0)
+        
+        # 6. 新增：FADADE B席M2班次休13:00-14:00
+        elif seat == 'B席' and color_code == 'FADADE' and main_shift == 'M2':
+            shift['break_start'] = time(13, 0)
+            shift['break_end'] = time(14, 0)
             
         # 原有A席T1班次的休息时间调整
         elif seat == 'A席' and main_shift == 'T1':
