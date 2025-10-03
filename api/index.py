@@ -1,11 +1,12 @@
-import subprocess
-import sys
 import os
+import sys
+import subprocess
 
-def install_requirements():
+# 安装依赖
+def install_dependencies():
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
 
 if __name__ == "__main__":
-    install_requirements()
+    install_dependencies()
     # 启动Streamlit应用
     os.system("streamlit run paiban.py --server.port=$PORT --server.address=0.0.0.0")
