@@ -101,7 +101,7 @@ class AgentViewer:
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
             
-        check_time = check_time or datetime.now().time()
+        check_time = check_time or self.get_beijing_time().time()
         
         start, end = shift['start'], shift['end']
         break_start, break_end = shift.get('break_start'), shift.get('break_end')
@@ -263,6 +263,12 @@ class AgentViewer:
                 2 if x['status'] == '正在路上' else 3)
         
         return result
+    
+    def get_beijing_time(self):
+        """获取北京时间（东八区）"""
+        utc_now = datetime.utcnow()
+        beijing_time = utc_now + timedelta(hours=8)
+        return beijing_time
 
 def download_from_jiananguo():
     try:
@@ -345,18 +351,29 @@ def create_stat_card(seat, online_count, total_count, color):
     </div>
     """
 
-def update_current_time():
+def update_current_time(viewer):
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
-    now = datetime.now()
+    now = viewer.get_beijing_time()
     weekday = weekdays[now.weekday()]
     return now.strftime(f"%Y年%m月%d日 {weekday} %H:%M:%S")
 
-def auto_refresh_time(placeholder):
+def auto_refresh_time(placeholder, viewer):
     while True:
         if not st.session_state.get('auto_refresh', True):
             t.sleep(1)
             continue
-        placeholder.markdown(f"### 当前时间: {update_current_time()}")
+        placeholder.markdown(f"### 当前时间: {update_current_time(viewer)}")
+        
+        # 检查是否需要整点刷新
+        current_minute = viewer.get_beijing_time().minute
+        if current_minute == 0 and not st.session_state.get('hour_refresh_done', False):
+            st.session_state.hour_refresh_done = True
+            st.session_state.refresh_counter += 1
+            st.session_state.schedule_data = None
+            st.rerun()
+        elif current_minute != 0:
+            st.session_state.hour_refresh_done = False
+            
         t.sleep(1)
 
 def main():
@@ -382,7 +399,9 @@ def main():
     if 'last_load_date' not in st.session_state:
         st.session_state.last_load_date = None
     if 'last_auto_refresh' not in st.session_state:
-        st.session_state.last_auto_refresh = datetime.now()
+        st.session_state.last_auto_refresh = None
+    if 'hour_refresh_done' not in st.session_state:
+        st.session_state.hour_refresh_done = False
     
     # 初始化查看器
     viewer = AgentViewer()
@@ -393,20 +412,11 @@ def main():
             download_success, file_path, download_message = download_from_jiananguo()
             if download_success:
                 st.session_state.file_path = file_path
-                st.session_state.last_download = datetime.now()
+                st.session_state.last_download = viewer.get_beijing_time()
                 st.success("排班文件下载成功")
             else:
                 st.error(f"下载失败: {download_message}")
                 st.stop()
-    
-    # 每小时自动刷新
-    current_time = datetime.now()
-    time_diff = current_time - st.session_state.last_auto_refresh
-    if time_diff.total_seconds() >= 3600:  # 1小时
-        st.session_state.last_auto_refresh = current_time
-        st.session_state.refresh_counter += 1
-        st.session_state.schedule_data = None
-        st.rerun()
     
     # 主界面
     st.title("📊 综合组在线坐席")
@@ -419,14 +429,14 @@ def main():
         if 'time_thread' not in st.session_state:
             st.session_state.time_thread = threading.Thread(
                 target=auto_refresh_time, 
-                args=(current_datetime,), 
+                args=(current_datetime, viewer), 
                 daemon=True
             )
             st.session_state.time_thread.start()
     
     with col2:
         if st.button("🔄 刷新状态", use_container_width=True):
-            st.session_state.last_refresh = datetime.now()
+            st.session_state.last_refresh = viewer.get_beijing_time()
             st.session_state.refresh_counter += 1
             st.session_state.schedule_data = None  # 清除缓存
             st.success("状态已刷新")
@@ -437,7 +447,7 @@ def main():
                 download_success, file_path, download_message = download_from_jiananguo()
                 if download_success:
                     st.session_state.file_path = file_path
-                    st.session_state.last_download = datetime.now()
+                    st.session_state.last_download = viewer.get_beijing_time()
                     st.session_state.schedule_data = None
                     st.session_state.refresh_counter += 1
                     st.success("班表已更新")
@@ -454,16 +464,17 @@ def main():
         info_text.append(f"状态最后刷新: {st.session_state.last_refresh.strftime('%Y-%m-%d %H:%M:%S')}")
     
     # 显示下次自动刷新时间
-    next_refresh = st.session_state.last_auto_refresh + timedelta(hours=1)
-    info_text.append(f"下次自动刷新: {next_refresh.strftime('%H:%M:%S')}")
+    now = viewer.get_beijing_time()
+    next_hour = (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
+    info_text.append(f"下次自动刷新: {next_hour.strftime('%H:%M:%S')}")
     
     if info_text:
         st.info(" | ".join(info_text))
     
-    # 关键修复：强制使用当前时间，移除时间选择器
-    now = datetime.now()
-    view_date = now.date()
-    view_time = now.time()
+    # 使用北京时间
+    beijing_now = viewer.get_beijing_time()
+    view_date = beijing_now.date()
+    view_time = beijing_now.time()
     
     # 显示当前查看时间
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
