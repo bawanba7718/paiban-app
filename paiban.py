@@ -256,13 +256,26 @@ class AgentViewer:
             else:
                 result['A席'].append(person)
         
+        # 按上班时间早晚排序
         for cat in result:
-            result[cat].sort(key=lambda x: 
-                0 if x['status'] == '搬砖中' else 
-                1 if x['status'] == '干饭中' else 
-                2 if x['status'] == '正在路上' else 3)
+            result[cat].sort(key=lambda x: self.get_shift_start_time(x['shift']))
         
         return result
+    
+    def get_shift_start_time(self, shift_code):
+        """获取班次的开始时间用于排序"""
+        if not shift_code or str(shift_code).strip() == '':
+            return time(23, 59, 59)  # 没有班次的排到最后
+            
+        shift_code = str(shift_code).strip()
+        
+        # 查找主班次
+        for s in self.shift_times:
+            if s in shift_code:
+                return self.shift_times[s]['start']
+        
+        # 未知班次排到最后
+        return time(23, 59, 59)
     
     def get_beijing_time(self):
         """获取北京时间（东八区）"""
@@ -291,7 +304,7 @@ def download_from_jiananguo():
         client.download_sync(remote_path=remote_file, local_path=local_file)
         
         if os.path.exists(local_file) and os.path.getsize(local_file) > 0:
-            return True, local_file, "成功从坚果云下载排班文件"
+            return True, local_file, ""
         else:
             return False, None, "从坚果云下载文件失败"
             
@@ -408,14 +421,14 @@ def main():
     
     # 首次运行或文件不存在时下载排班文件
     if st.session_state.file_path is None or not os.path.exists(st.session_state.file_path):
-        with st.spinner("正在下载排班文件..."):
+        with st.spinner("正在加载排班文件..."):
             download_success, file_path, download_message = download_from_jiananguo()
             if download_success:
                 st.session_state.file_path = file_path
                 st.session_state.last_download = viewer.get_beijing_time()
-                st.success("排班文件下载成功")
+                # 不显示成功消息
             else:
-                st.error(f"下载失败: {download_message}")
+                st.error(f"加载失败: {download_message}")
                 st.stop()
     
     # 主界面
@@ -442,17 +455,17 @@ def main():
             st.success("状态已刷新")
     
     with col3:
-        if st.button("📥 重新下载班表", use_container_width=True):
-            with st.spinner("重新下载班表中..."):
+        if st.button("🔄 重新加载", use_container_width=True):
+            with st.spinner("重新加载中..."):
                 download_success, file_path, download_message = download_from_jiananguo()
                 if download_success:
                     st.session_state.file_path = file_path
                     st.session_state.last_download = viewer.get_beijing_time()
                     st.session_state.schedule_data = None
                     st.session_state.refresh_counter += 1
-                    st.success("班表已更新")
+                    st.success("数据已更新")
                 else:
-                    st.error(f"下载失败: {download_message}")
+                    st.error(f"加载失败: {download_message}")
     
     st.markdown("---")
     
@@ -471,10 +484,36 @@ def main():
     if info_text:
         st.info(" | ".join(info_text))
     
-    # 使用北京时间
-    beijing_now = viewer.get_beijing_time()
-    view_date = beijing_now.date()
-    view_time = beijing_now.time()
+    # 日期和时段选择
+    col_date, col_time = st.columns(2)
+    
+    with col_date:
+        # 日期选择
+        default_date = viewer.get_beijing_time().date()
+        view_date = st.date_input(
+            "选择查看日期", 
+            default_date,
+            key=f"date_{st.session_state.refresh_counter}"
+        )
+    
+    with col_time:
+        # 时段选择
+        hour_options = [f"{h:02d}:00" for h in range(24)]
+        current_hour_str = f"{viewer.get_beijing_time().hour:02d}:00"
+        
+        # 默认选择当前时段
+        default_idx = hour_options.index(current_hour_str) if current_hour_str in hour_options else 0
+        
+        selected_time_str = st.selectbox(
+            "选择查看时段", 
+            hour_options,
+            index=default_idx,
+            key=f"time_{st.session_state.refresh_counter}"
+        )
+        
+        # 解析选择的时间
+        hour = int(selected_time_str.split(":")[0])
+        view_time = time(hour, 0)
     
     # 显示当前查看时间
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
@@ -489,10 +528,10 @@ def main():
     if current_hour < 8:
         load_date = view_date - timedelta(days=1)
         load_weekday = weekdays[load_date.weekday()]
-        st.info(f"当前时间: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')} (显示{load_date.strftime('%Y年%m月%d日')} {load_weekday}的排班数据)")
+        st.info(f"当前查看: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')} (显示{load_date.strftime('%Y年%m月%d日')} {load_weekday}的排班数据)")
     else:
         load_date = view_date  # 确保在else分支中也有定义
-        st.info(f"当前时间: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')}")
+        st.info(f"当前查看: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')}")
     
     # 当日期变更时，清除缓存的排班数据
     if st.session_state.last_load_date != load_date:
@@ -507,7 +546,7 @@ def main():
     
     if schedule_df is None or schedule_df.empty:
         st.error("未加载到有效坐席数据，请检查文件内容或日期匹配情况。")
-        st.info("请点击顶部的重新下载班表按钮尝试更新数据")
+        st.info("请点击顶部的重新加载按钮尝试更新数据")
         return
     
     # 按A/B/C席分类显示坐席
