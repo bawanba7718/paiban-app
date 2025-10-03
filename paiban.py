@@ -47,7 +47,7 @@ class AgentViewer:
             '未知班次': '❓'
         }
         
-        # 班次时间定义
+        # 班次时间定义（基础时间，后续会根据席位和颜色调整休息时间）
         self.shift_times = {
             'T1': {'start': time(8, 0), 'end': time(20, 0), 'name': '白班', 
                   'break_start': time(13, 0), 'break_end': time(14, 0)},
@@ -64,7 +64,7 @@ class AgentViewer:
             'D1': {'start': time(9, 0), 'end': time(18, 0), 'name': '白班',
                   'break_start': time(12, 0), 'break_end': time(13, 0)},
             'D2': {'start': time(10, 0), 'end': time(19, 0), 'name': '白班',
-                  'break_start': time(13, 0), 'break_end': time(14, 0)},
+                  'break_start': time(13, 0), 'break_end': time(14, 0)},  # 基础设置，会为A席调整
             'D3': {'start': time(11, 0), 'end': time(20, 0), 'name': '白班',
                   'break_start': time(15, 0), 'break_end': time(16, 0)},
             'E1': {'start': time(12, 0), 'end': time(21, 0), 'name': '晚班',
@@ -81,7 +81,10 @@ class AgentViewer:
                   'break_start': None, 'break_end': None},
         }
 
-    def get_work_status(self, shift_code, seat, check_time=None):
+    def get_work_status(self, shift_code, seat, color_code, check_time=None):
+        """
+        获取工作状态，新增color_code参数用于根据颜色调整休息时间
+        """
         if not shift_code or str(shift_code).strip() == '':
             return "未排班", "#BFBFBF"
             
@@ -99,8 +102,23 @@ class AgentViewer:
             
         shift = self.shift_times[main_shift].copy()
         
-        # 修正A席T1班次的休息时间
-        if seat == 'A席' and main_shift == 'T1':
+        # 1. A席D2休：14-15
+        if seat == 'A席' and main_shift == 'D2':
+            shift['break_start'] = time(14, 0)
+            shift['break_end'] = time(15, 0)
+        
+        # 2. FFC000 C席休13:00-14:00
+        elif seat == 'C席' and color_code == 'FFC000':
+            shift['break_start'] = time(13, 0)
+            shift['break_end'] = time(14, 0)
+            
+        # 3. D9E1F2 C席休14:00-15:00
+        elif seat == 'C席' and color_code == 'D9E1F2':
+            shift['break_start'] = time(14, 0)
+            shift['break_end'] = time(15, 0)
+            
+        # 原有A席T1班次的休息时间调整
+        elif seat == 'A席' and main_shift == 'T1':
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
             
@@ -250,7 +268,13 @@ class AgentViewer:
             return result
         
         for _, person in df.iterrows():
-            status, status_color = self.get_work_status(person['shift'], person['seat'], check_time)
+            # 调用get_work_status时传入color_code参数
+            status, status_color = self.get_work_status(
+                person['shift'], 
+                person['seat'], 
+                person['color'],  # 传入颜色代码
+                check_time
+            )
             person['status'] = status
             person['status_color'] = status_color
             
@@ -260,7 +284,7 @@ class AgentViewer:
             else:
                 result['A席'].append(person)
         
-        # 排序逻辑修改：
+        # 排序逻辑：
         # 1. 优先按状态排序（搬砖中 > 干饭中 > 正在路上 > 已回家）
         # 2. 相同状态内按上班时间从早到晚排序
         status_priority = {
