@@ -295,7 +295,7 @@ def download_from_jiananguo():
             return False, None, "从坚果云下载文件为空或不存在"
             
     except Exception as e:
-        return False, None, f"下载失败: {str(e)}"
+        return False, None, f"下载失败: {str(e)}\n详细错误:\n{error_detail}"
 
 def create_agent_card(person_info, viewer):
     """创建坐席信息卡片 - 根据状态设置背景色"""
@@ -574,3 +574,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
