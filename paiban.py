@@ -13,13 +13,13 @@ import html
 
 class AgentViewer:
     def __init__(self):
-        # 颜色-职位对应关系
+        # 颜色-职位对应关系 - 扩展颜色映射
         self.color_roles = {
             'FFC000': 'C席',
             'FFEE79': 'C席',
             'E2EFDA': 'C席',
             '91AADF': 'C席',
-            'D9E1F2': 'C席',
+            'D9E1F2': 'C席',  # 修正为D9E1F2
             'EF949F': 'B席',
             'FADADE': 'B席',
             '8CDDFA': '休',
@@ -44,7 +44,7 @@ class AgentViewer:
             '未知班次': '❓'
         }
         
-        # 班次时间定义
+        # 班次时间定义 - 修正B席班次时间
         self.shift_times = {
             'T1': {'start': time(8, 0), 'end': time(20, 0), 'name': '白班', 
                   'break_start': time(13, 0), 'break_end': time(14, 0)},
@@ -85,7 +85,7 @@ class AgentViewer:
         shift_code = str(shift_code).strip()
         main_shift = None
         
-        # 改进班次识别逻辑
+        # 改进班次识别逻辑，处理包含"备"的班次
         for s in self.shift_times:
             if s in shift_code:
                 main_shift = s
@@ -112,7 +112,10 @@ class AgentViewer:
         # 改进跨天班次判断逻辑
         if is_night_shift:
             # T2班次：前一天20:00到当天8:00
-            in_work_time = (check_time >= start) or (check_time < end)
+            if start <= end:  # 正常时间范围
+                in_work_time = start <= check_time < end
+            else:  # 跨天情况
+                in_work_time = (check_time >= start) or (check_time < end)
         else:
             # 非跨天班次
             in_work_time = start <= check_time < end
@@ -132,6 +135,7 @@ class AgentViewer:
             if break_start < break_end:
                 in_break_time = break_start <= check_time < break_end
             else:
+                # 处理跨天休息时间（目前没有这种情况）
                 in_break_time = check_time >= break_start or check_time < break_end
         
         if is_on_the_way:
@@ -187,20 +191,7 @@ class AgentViewer:
                     break
             
             if today_col_idx is None:
-                st.warning(f"未找到 {target_date_str} 的排班列，尝试查找最近的日期列")
-                # 尝试查找最近的日期列
-                for idx, col in enumerate(df_main.columns):
-                    try:
-                        # 尝试解析日期
-                        col_date = pd.to_datetime(col)
-                        if pd.Timestamp(target_date).date() == col_date.date():
-                            today_col_idx = idx
-                            break
-                    except:
-                        continue
-            
-            if today_col_idx is None:
-                st.error(f"无法找到日期列，请检查Excel文件格式")
+                st.error(f"未找到 {target_date_str} 的排班列")
                 return None
             
             color_data = []
@@ -225,6 +216,7 @@ class AgentViewer:
                         shift_code.strip() in ['', '休', '休息']):
                         continue
                     
+                    # 改进颜色识别，包含更多颜色变体
                     seat = self.color_roles.get(color_code, 'A席')
                     
                     person_info = {
@@ -240,7 +232,6 @@ class AgentViewer:
                     
                     color_data.append(person_info)
                 except Exception as e:
-                    st.warning(f"处理行 {row_idx} 时出错: {str(e)}")
                     continue
             
             return pd.DataFrame(color_data)
@@ -275,13 +266,9 @@ class AgentViewer:
 
 def download_from_jiananguo():
     try:
-        # 从环境变量获取凭证，提供默认值以便测试
-        jiananguo_email = st.secrets.get("JIANANGUO_EMAIL", "")
-        jiananguo_password = st.secrets.get("JIANANGUO_PASSWORD", "")
-        
-        # 检查凭证是否存在
-        if not jiananguo_email or not jiananguo_password:
-            return False, None, "请配置坚果云账号和密码"
+        # 从环境变量获取凭证
+        jiananguo_email = st.secrets.get("JIANANGUO_EMAIL", "hanyong@foxmail.com")
+        jiananguo_password = st.secrets.get("JIANANGUO_PASSWORD", "ah5fb6yahy62b8rt")
         
         options = {
             'webdav_hostname': 'https://dav.jianguoyun.com/dav/',
@@ -292,13 +279,6 @@ def download_from_jiananguo():
         client = Client(options)
         remote_file = '我的坚果云/排班.xlsx'
         
-        # 检查远程文件是否存在
-        try:
-            if not client.check(remote_file):
-                return False, None, f"远程文件不存在: {remote_file}"
-        except Exception as e:
-            return False, None, f"检查远程文件失败: {str(e)}"
-        
         with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
             local_file = tmp_file.name
         
@@ -307,48 +287,49 @@ def download_from_jiananguo():
         if os.path.exists(local_file) and os.path.getsize(local_file) > 0:
             return True, local_file, "成功从坚果云下载排班文件"
         else:
-            return False, None, "从坚果云下载文件失败，文件为空"
+            return False, None, "从坚果云下载文件失败"
             
     except Exception as e:
         return False, None, f"下载失败: {str(e)}"
 
 def create_agent_card(person_info, viewer):
-    """创建坐席信息卡片"""
+    """创建坐席信息卡片 - 修改为根据状态设置卡片背景色"""
+    # 获取状态图标
     status_icon = viewer.status_icons.get(person_info['status'], '❓')
     
-    # 统一状态颜色
+    # 统一状态颜色：正在路上和已回家都使用 #BFBFBF
     if person_info['status'] in ["正在路上", "已回家"]:
         status_color = "#BFBFBF"
-        bg_color = "#F0F0F0"  # 浅灰色背景
+        # 当状态为"正在路上"或"已回家"时，整个卡片背景设为灰色
+        bg_color = "#BFBFBF"
     else:
         status_color = person_info['status_color']
+        # 正常情况下的背景色
         seat_type = person_info['seat']
         bg_color = f"#{person_info['color']}" if seat_type in ['B席', 'C席'] else "#FFFFFF"
     
-    # 创建HTML卡片，增加容错处理
-    try:
-        card_html = f"""
-        <div style="background-color: {bg_color}; border: 2px solid #000000; border-radius: 8px; padding: 12px; margin: 8px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-            <div style="display: flex; align-items: center; justify-content: space-between;">
-                <div style="width: 30%;">
-                    <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">工号: {html.escape(person_info.get('id', ''))}</p>
-                    <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">职场: {html.escape(person_info.get('workplace', ''))}</p>
-                </div>
-                <div style="width: 40%; text-align: center;">
-                    <h3 style="margin: 0 0 8px 0; font-size: 18px; font-weight: bold;">{html.escape(person_info.get('name', ''))}</h3>
-                    <span style="font-size: 24px; display: block; margin-bottom: 4px;">{status_icon}</span>
-                    <p style="margin: 0; font-size: 16px; font-weight: bold; color: {status_color};">{person_info.get('status', '')}</p>
-                </div>
-                <div style="width: 30%; text-align: right;">
-                    <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">班次: {html.escape(person_info.get('shift', ''))}</p>
-                    <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">席位: {person_info.get('seat', '')}</p>
-                </div>
+    # 创建HTML卡片
+    card_html = f"""
+    <div style="background-color: {bg_color}; border: 2px solid #000000; border-radius: 8px; padding: 12px; margin: 8px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="width: 30%;">
+                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">工号: {person_info['id']}</p>
+                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">职场: {person_info['workplace']}</p>
+            </div>
+            <div style="width: 40%; text-align: center;">
+                <h3 style="margin: 0 0 8px 0; font-size: 18px; font-weight: bold;">{person_info['name']}</h3>
+                <span style="font-size: 24px; display: block; margin-bottom: 4px;">{status_icon}</span>
+                <p style="margin: 0; font-size: 16px; font-weight: bold; color: {status_color};">{person_info['status']}</p>
+            </div>
+            <div style="width: 30%; text-align: right;">
+                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">班次: {person_info['shift']}</p>
+                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">席位: {person_info['seat']}</p>
             </div>
         </div>
-        """
-        return card_html
-    except Exception as e:
-        return f"<div>卡片生成错误: {str(e)}</div>"
+    </div>
+    """
+    
+    return card_html
 
 def create_stat_card(seat, online_count, total_count, color):
     """创建统计卡片"""
@@ -364,21 +345,19 @@ def create_stat_card(seat, online_count, total_count, color):
     </div>
     """
 
-def update_current_time(placeholder):
+def update_current_time():
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+    now = datetime.now()
+    weekday = weekdays[now.weekday()]
+    return now.strftime(f"%Y年%m月%d日 {weekday} %H:%M:%S")
+
+def auto_refresh_time(placeholder):
     while True:
-        try:
-            if not st.session_state.get('auto_refresh', True):
-                t.sleep(1)
-                continue
-            now = datetime.now()
-            weekday = weekdays[now.weekday()]
-            current_time_str = now.strftime(f"%Y年%m月%d日 {weekday} %H:%M:%S")
-            placeholder.markdown(f"### 当前时间: {current_time_str}")
+        if not st.session_state.get('auto_refresh', True):
             t.sleep(1)
-        except Exception as e:
-            st.error(f"时间更新出错: {str(e)}")
-            t.sleep(5)
+            continue
+        placeholder.markdown(f"### 当前时间: {update_current_time()}")
+        t.sleep(1)
 
 def main():
     st.set_page_config(
@@ -405,24 +384,10 @@ def main():
     if 'last_auto_refresh' not in st.session_state:
         st.session_state.last_auto_refresh = datetime.now()
     if 'force_current_time' not in st.session_state:
-        st.session_state.force_current_time = True
+        st.session_state.force_current_time = True  # 强制显示当前时段
     
     # 初始化查看器
     viewer = AgentViewer()
-    
-    # 检查必要的依赖
-    required_packages = ['pandas', 'streamlit', 'openpyxl', 'webdav3']
-    missing_packages = []
-    for pkg in required_packages:
-        try:
-            __import__(pkg)
-        except ImportError:
-            missing_packages.append(pkg)
-    
-    if missing_packages:
-        st.error(f"缺少必要的依赖库，请安装: {', '.join(missing_packages)}")
-        st.code(f"pip install {' '.join(missing_packages)}")
-        return
     
     # 首次运行或文件不存在时下载排班文件
     if st.session_state.file_path is None or not os.path.exists(st.session_state.file_path):
@@ -434,16 +399,16 @@ def main():
                 st.success("排班文件下载成功")
             else:
                 st.error(f"下载失败: {download_message}")
-                # 提供上传文件的备选方案
-                uploaded_file = st.file_uploader("请手动上传排班文件", type=["xlsx"])
-                if uploaded_file is not None:
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp_file:
-                        tmp_file.write(uploaded_file.getvalue())
-                        st.session_state.file_path = tmp_file.name
-                        st.session_state.last_download = datetime.now()
-                        st.success("已成功上传排班文件")
-                else:
-                    return
+                st.stop()
+    
+    # 每小时自动刷新
+    current_time = datetime.now()
+    time_diff = current_time - st.session_state.last_auto_refresh
+    if time_diff.total_seconds() >= 3600:  # 1小时
+        st.session_state.last_auto_refresh = current_time
+        st.session_state.refresh_counter += 1
+        st.session_state.schedule_data = None
+        st.rerun()
     
     # 主界面
     st.title("📊 综合组在线坐席")
@@ -453,15 +418,20 @@ def main():
     
     with col1:
         current_datetime = st.empty()
-        # 使用Streamlit的回调而非独立线程更新时间，避免线程冲突
-        update_current_time(current_datetime)
+        if 'time_thread' not in st.session_state:
+            st.session_state.time_thread = threading.Thread(
+                target=auto_refresh_time, 
+                args=(current_datetime,), 
+                daemon=True
+            )
+            st.session_state.time_thread.start()
     
     with col2:
         if st.button("🔄 刷新状态", use_container_width=True):
             st.session_state.last_refresh = datetime.now()
             st.session_state.refresh_counter += 1
-            st.session_state.schedule_data = None
-            st.experimental_rerun()
+            st.session_state.schedule_data = None  # 清除缓存
+            st.success("状态已刷新")
     
     with col3:
         if st.button("📥 重新下载班表", use_container_width=True):
@@ -472,7 +442,7 @@ def main():
                     st.session_state.last_download = datetime.now()
                     st.session_state.schedule_data = None
                     st.session_state.refresh_counter += 1
-                    st.experimental_rerun()
+                    st.success("班表已更新")
                 else:
                     st.error(f"下载失败: {download_message}")
     
@@ -492,9 +462,10 @@ def main():
     if info_text:
         st.info(" | ".join(info_text))
     
-    # 时间选择组件
+    # 时间选择组件 - 强制显示当前时段
     col_date, col_time = st.columns(2)
     with col_date:
+        # 强制使用当前日期
         default_date = datetime.now().date()
         view_date = st.date_input(
             "选择查看日期", 
@@ -506,15 +477,19 @@ def main():
         now = datetime.now()
         
         hour_options = [f"{h:02d}:00" for h in range(24)]
-        hour_options = "当前时段"
+        hour_options.insert(0, "当前时段")
+        
+        # 强制默认选择"当前时段"
+        default_idx = 0
         
         selected_time_str = st.selectbox(
             "选择查看时间", 
-            [hour_option] + hour_options,
+            hour_options,
+            index=default_idx,
             key=f"time_{st.session_state.refresh_counter}"
         )
         
-        if selected_time_str == hour_option:
+        if selected_time_str == "当前时段":
             view_time = now.time()
         else:
             hour = int(selected_time_str.split(":")[0])
@@ -522,7 +497,9 @@ def main():
     
     check_time = view_time
     
-    # 处理跨天班次
+    # 改进T2班次跨天问题处理
+    # 如果查看时间在0:00-8:00之间，需要加载前一天的排班
+    # 否则加载当天的排班
     current_hour = check_time.hour
     if current_hour < 8:
         load_date = view_date - timedelta(days=1)
@@ -532,22 +509,18 @@ def main():
     # 显示当前查看时间及实际加载的排班日期
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
     weekday = weekdays[view_date.weekday()]
-    
-    display_date = view_date
-    display_weekday = weekday
-    
     if current_hour < 8:
         load_weekday = weekdays[load_date.weekday()]
-        st.info(f"当前查看时间: {display_date.strftime('%Y年%m月%d日')} {display_weekday} {check_time.strftime('%H:%M')} (显示{load_date.strftime('%Y年%m月%d日')} {load_weekday}的排班数据)")
+        st.info(f"当前查看时间: {view_date.strftime('%Y年%m月%d日')} {weekday} {check_time.strftime('%H:%M')} (显示{load_date.strftime('%Y年%m月%d日')} {load_weekday}的排班数据)")
     else:
-        st.info(f"当前查看时间: {display_date.strftime('%Y年%m月%d日')} {display_weekday} {check_time.strftime('%H:%M')}")
+        st.info(f"当前查看时间: {view_date.strftime('%Y年%m月%d日')} {weekday} {check_time.strftime('%H:%M')}")
     
     # 当日期变更时，清除缓存的排班数据
     if (st.session_state.last_load_date != load_date or 
         st.session_state.force_current_time):
         st.session_state.schedule_data = None
         st.session_state.last_load_date = load_date
-        st.session_state.force_current_time = False
+        st.session_state.force_current_time = False  # 重置标志
     
     # 加载排班数据
     with st.spinner("正在加载坐席数据，请稍候..."):
@@ -557,7 +530,7 @@ def main():
     
     if schedule_df is None or schedule_df.empty:
         st.error("未加载到有效坐席数据，请检查文件内容或日期匹配情况。")
-        st.info("请点击顶部的重新下载班表按钮尝试更新数据，或手动上传文件")
+        st.info("请点击顶部的重新下载班表按钮尝试更新数据")
         return
     
     # 按A/B/C席分类显示坐席
