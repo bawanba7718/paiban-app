@@ -19,7 +19,7 @@ class AgentViewer:
             'FFEE79': 'C席',
             'E2EFDA': 'C席',
             '91AADF': 'C席',
-            'D9E1F4': 'C席',  # 新增这个颜色映射
+            'D9E1F2': 'C席',  # 修正为D9E1F2
             'EF949F': 'B席',
             'FADADE': 'B席',
             '8CDDFA': '休',
@@ -381,6 +381,8 @@ def main():
         st.session_state.refresh_counter = 0
     if 'last_load_date' not in st.session_state:
         st.session_state.last_load_date = None
+    if 'last_auto_refresh' not in st.session_state:
+        st.session_state.last_auto_refresh = datetime.now()
     
     # 初始化查看器
     viewer = AgentViewer()
@@ -396,6 +398,15 @@ def main():
             else:
                 st.error(f"下载失败: {download_message}")
                 st.stop()
+    
+    # 每小时自动刷新
+    current_time = datetime.now()
+    time_diff = current_time - st.session_state.last_auto_refresh
+    if time_diff.total_seconds() >= 3600:  # 1小时
+        st.session_state.last_auto_refresh = current_time
+        st.session_state.refresh_counter += 1
+        st.session_state.schedule_data = None
+        st.rerun()
     
     # 主界面
     st.title("📊 综合组在线坐席")
@@ -440,10 +451,15 @@ def main():
         info_text.append(f"班表最后更新: {st.session_state.last_download.strftime('%Y-%m-%d %H:%M:%S')}")
     if st.session_state.last_refresh:
         info_text.append(f"状态最后刷新: {st.session_state.last_refresh.strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    # 显示下次自动刷新时间
+    next_refresh = st.session_state.last_auto_refresh + timedelta(hours=1)
+    info_text.append(f"下次自动刷新: {next_refresh.strftime('%H:%M:%S')}")
+    
     if info_text:
         st.info(" | ".join(info_text))
     
-    # 时间选择组件
+    # 时间选择组件 - 强制显示当前时段
     col_date, col_time = st.columns(2)
     with col_date:
         default_date = datetime.now().date()
@@ -461,12 +477,8 @@ def main():
         hour_options = [f"{h:02d}:00" for h in range(24)]
         hour_options.insert(0, "当前时段")
         
-        if view_date == datetime.now().date():
-            default_idx = 0
-        else:
-            default_idx = current_hour + 1
-        
-        default_idx = min(max(default_idx, 0), len(hour_options) - 1)
+        # 强制默认选择"当前时段"
+        default_idx = 0
         
         selected_time_str = st.selectbox(
             "选择查看时间", 
