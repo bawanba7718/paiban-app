@@ -462,58 +462,25 @@ def main():
     if info_text:
         st.info(" | ".join(info_text))
     
-    # 时间选择组件 - 强制显示当前时段
-    col_date, col_time = st.columns(2)
-    with col_date:
-        # 强制使用当前日期
-        default_date = datetime.now().date()
-        view_date = st.date_input(
-            "选择查看日期", 
-            default_date, 
-            key=f"date_{st.session_state.refresh_counter}"
-        )
+    # 关键修复：强制使用当前时间，移除时间选择器
+    now = datetime.now()
+    view_date = now.date()
+    view_time = now.time()
     
-    with col_time:
-        now = datetime.now()
-        
-        hour_options = [f"{h:02d}:00" for h in range(24)]
-        hour_options.insert(0, "当前时段")
-        
-        # 强制默认选择"当前时段"
-        default_idx = 0
-        
-        selected_time_str = st.selectbox(
-            "选择查看时间", 
-            hour_options,
-            index=default_idx,
-            key=f"time_{st.session_state.refresh_counter}"
-        )
-        
-        if selected_time_str == "当前时段":
-            view_time = now.time()
-        else:
-            hour = int(selected_time_str.split(":")[0])
-            view_time = time(hour, 0)
-    
-    check_time = view_time
+    # 显示当前查看时间
+    weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+    weekday = weekdays[view_date.weekday()]
     
     # 改进T2班次跨天问题处理
     # 如果查看时间在0:00-8:00之间，需要加载前一天的排班
     # 否则加载当天的排班
-    current_hour = check_time.hour
+    current_hour = view_time.hour
     if current_hour < 8:
         load_date = view_date - timedelta(days=1)
-    else:
-        load_date = view_date
-    
-    # 显示当前查看时间及实际加载的排班日期
-    weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
-    weekday = weekdays[view_date.weekday()]
-    if current_hour < 8:
         load_weekday = weekdays[load_date.weekday()]
-        st.info(f"当前查看时间: {view_date.strftime('%Y年%m月%d日')} {weekday} {check_time.strftime('%H:%M')} (显示{load_date.strftime('%Y年%m月%d日')} {load_weekday}的排班数据)")
+        st.info(f"当前时间: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')} (显示{load_date.strftime('%Y年%m月%d日')} {load_weekday}的排班数据)")
     else:
-        st.info(f"当前查看时间: {view_date.strftime('%Y年%m月%d日')} {weekday} {check_time.strftime('%H:%M')}")
+        st.info(f"当前时间: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')}")
     
     # 当日期变更时，清除缓存的排班数据
     if (st.session_state.last_load_date != load_date or 
@@ -534,7 +501,7 @@ def main():
         return
     
     # 按A/B/C席分类显示坐席
-    categorized_data = viewer.categorize_by_seat(schedule_df, check_time)
+    categorized_data = viewer.categorize_by_seat(schedule_df, view_time)
     
     # 显示各席位在线人数统计
     st.subheader("📊 坐席统计")
