@@ -241,10 +241,14 @@ class AgentViewer:
 
 def download_from_jiananguo():
     try:
+        # 从环境变量获取凭证
+        jiananguo_email = st.secrets.get("JIANANGUO_EMAIL", "hanyong@foxmail.com")
+        jiananguo_password = st.secrets.get("JIANANGUO_PASSWORD", "ah5fb6yahy62b8rt")
+        
         options = {
             'webdav_hostname': 'https://dav.jianguoyun.com/dav/',
-            'webdav_login': 'hanyong@foxmail.com',
-            'webdav_password': 'ah5fb6yahy62b8rt'
+            'webdav_login': jiananguo_email,
+            'webdav_password': jiananguo_password
         }
         
         client = Client(options)
