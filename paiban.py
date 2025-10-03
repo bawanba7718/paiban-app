@@ -23,11 +23,11 @@ class AgentViewer:
             'E2EFDA': 'C席',
             '91AADF': 'C席',
             'D9E1F2': 'C席',
-            'EF949F': 'B席',  # 该颜色B席有特定休息时间设置
+            'EF949F': 'B席',
             'FADADE': 'B席',
             '8CDDFA': '休',
             'FFFF00': '休',
-            'FFFFFF': 'A席',  # 该颜色A席有特定休息时间设置
+            'FFFFFF': 'A席',  # 无颜色/白色为A席
         }
         
         # 席位颜色映射
@@ -54,7 +54,7 @@ class AgentViewer:
             'T2': {'start': time(20, 0), 'end': time(8, 0), 'name': '夜班',
                   'break_start': None, 'break_end': None},
             'M2': {'start': time(8, 0), 'end': time(17, 0), 'name': '早班',
-                  'break_start': time(14, 0), 'break_end': time(15, 0)},  # 基础设置
+                  'break_start': time(14, 0), 'break_end': time(15, 0)},  # 基础设置，会被A席规则覆盖
             'E2': {'start': time(13, 0), 'end': time(22, 0), 'name': '晚班',
                   'break_start': time(15, 0), 'break_end': time(16, 0)},
             'E3': {'start': time(13, 0), 'end': time(23, 0), 'name': '晚班',
@@ -83,9 +83,7 @@ class AgentViewer:
 
     def get_work_status(self, shift_code, seat, color_code, check_time=None):
         """
-        更新休息时间设置：
-        1. EF949F T1 B席休14:00-15:00
-        2. FFFFFF M2 A席休13:00-14:00
+        修复A席M2休息时间判断逻辑，确保13:00-14:00显示"干饭中"
         """
         if not shift_code or str(shift_code).strip() == '':
             return "未排班", "#BFBFBF"
@@ -93,8 +91,8 @@ class AgentViewer:
         shift_code = str(shift_code).strip()
         main_shift = None
         
-        # 识别主班次
-        for s in self.shift_times:
+        # 强制提取主班次（优先匹配完整班次代码）
+        for s in sorted(self.shift_times.keys(), key=lambda x: len(x), reverse=True):
             if s in shift_code:
                 main_shift = s
                 break
@@ -102,86 +100,85 @@ class AgentViewer:
         if not main_shift:
             return "未知班次", "#BFBFBF"
             
+        # 复制基础班次时间
         shift = self.shift_times[main_shift].copy()
         
-        # 1. 核心设置：FFFFFF M2 A席休13:00-14:00
-        if seat == 'A席' and color_code == 'FFFFFF' and main_shift == 'M2':
+        # 重点修复：A席M2（无论颜色）统一休13:00-14:00
+        # 扩大匹配范围，确保所有A席M2都应用此规则
+        if seat == 'A席' and main_shift == 'M2':
+            # 强制设置休息时间，覆盖任何基础设置
             shift['break_start'] = time(13, 0)
             shift['break_end'] = time(14, 0)
         
-        # 2. 核心设置：EF949F T1 B席休14:00-15:00
+        # EF949F T1 B席休14:00-15:00
         elif seat == 'B席' and color_code == 'EF949F' and main_shift == 'T1':
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
         
-        # 3. A席D2休：14-15
+        # 其他规则保持不变
         elif seat == 'A席' and main_shift == 'D2':
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
         
-        # 4. FFC000 C席仅T1班次休13:00-14:00
         elif seat == 'C席' and color_code == 'FFC000' and main_shift == 'T1':
             shift['break_start'] = time(13, 0)
             shift['break_end'] = time(14, 0)
             
-        # 5. D9E1F2 C席休14:00-15:00
         elif seat == 'C席' and color_code == 'D9E1F2':
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
         
-        # 6. E2EFDA C席T1班次休14:00-15:00
         elif seat == 'C席' and color_code == 'E2EFDA' and main_shift == 'T1':
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
         
-        # 7. E2EFDA C席M2班次休14:00-15:00
         elif seat == 'C席' and color_code == 'E2EFDA' and main_shift == 'M2':
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
         
-        # 8. FADADE B席M2班次休13:00-14:00
         elif seat == 'B席' and color_code == 'FADADE' and main_shift == 'M2':
             shift['break_start'] = time(13, 0)
             shift['break_end'] = time(14, 0)
             
-        # 9. A席T1班次的休息时间调整
         elif seat == 'A席' and main_shift == 'T1':
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
             
-        # 使用东八区时间
+        # 使用东八区时间，默认当前时间
         check_time = check_time or datetime.now(TZ_UTC_8).time()
         
+        # 解构时间参数
         start, end = shift['start'], shift['end']
         break_start, break_end = shift.get('break_start'), shift.get('break_end')
         
+        # 判断是否在工作时间内（优化跨天逻辑）
         is_night_shift = main_shift == 'T2'
         in_work_time = False
         
-        # 跨天班次判断逻辑
         if is_night_shift:
-            if start <= end:
-                in_work_time = start <= check_time < end
-            else:
-                in_work_time = (check_time >= start) or (check_time < end)
+            # 夜班：20:00-次日08:00
+            in_work_time = (check_time >= start) or (check_time < end)
         else:
+            # 白班/早班：正常时间范围
             in_work_time = start <= check_time < end
             
+        # 判断是否在上班路上
         is_on_the_way = False
-        if not in_work_time:
-            if not is_night_shift:
-                is_on_the_way = check_time < start
-            else:
-                if check_time < start and check_time >= time(0, 0):
-                    is_on_the_way = True
-        
+        if not in_work_time and not is_night_shift:
+            is_on_the_way = check_time < start
+            
+        # 重点修复：休息时间判断逻辑，确保13:00-14:00被正确识别
         in_break_time = False
         if break_start and break_end and in_work_time:
+            # 确保休息时间是当天范围内（非跨天）
             if break_start < break_end:
+                # 正常时间范围（如13:00-14:00）
                 in_break_time = break_start <= check_time < break_end
             else:
+                # 跨天休息时间（本系统不适用，但保留逻辑）
                 in_break_time = check_time >= break_start or check_time < break_end
         
+        # 确定最终状态
         if is_on_the_way:
             return "正在路上", "#BFBFBF"
         elif not in_work_time:
