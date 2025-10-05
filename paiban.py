@@ -10,6 +10,7 @@ import tempfile
 from webdav3.client import Client
 import threading
 import html
+import base64
 
 # 定义东八区时区（UTC+8）
 TZ_UTC_8 = timezone(timedelta(hours=8))
@@ -465,6 +466,13 @@ def filter_data_by_name(df, name_query):
         return df
     return df[df['name'].str.contains(name_query, case=False, na=False)]
 
+def get_base64_image():
+    """将图片转换为base64编码"""
+    # 这里应该是您的图片base64编码
+    # 由于您提供的图片内容不完整，这里使用一个示例base64编码
+    # 您需要将实际的图片转换为base64编码并替换这里
+    return "iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAACtWK6eAAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAOxAAADsQBlSsOGwAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAAORdEVYdFhNTDpjb20uYWRvYmUueG1wAAAAAAA8P3hwYWNrZXQgYmVnaW49J++7vycgaWQ9J1c1TTBNcENlaGlIenJlU3pOVGN6a2M5ZCc/Pgo8eDp4bXBtZXRhIHhtbG5zOng9J2Fkb2JlOm5zOm1ldGEvJz4KPHJkZjpSREYgeG1sbnM6cmRmPSdodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjJz4KCiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0nJwogIHhtbG5zOkF0dHJpYj0naHR0cDovL25zLmF0dHJpYnV0aW9uLmNvbS9hZHMvMS4wLyc+CiAgPEF0dHJpYjpBZHM+CiAgIDxyZGY6U2VxPgogICAgPHJkZjpsaSByZGY6cGFyc2VUeXBlPSdSZXNvdXJjZSc+CiAgICAgPEF0dHJpYjpDcmVhdGVkPjIwMjUtMTAtMDU8L0F0dHJpYjpDcmVhdGVkPgogICAgIDxBdHRyaWI6RXh0SWQ+MjcxNDZjYzQtMDRjNS00YzcyLWIyYjktMjI3OWU1NWU5NjY2PC9BdHRyaWI6RXh0SWQ+CiAgICAgPEF0dHJpYjpGYWxsYmFja1Jlc291cmNlPi9yZWZlcmVuY2U8L0F0dHJpYjpGYWxsYmFja1Jlc291cmNlPgogICAgIDxBdHRyaWI6UG9zdGVkPjIwMjUtMTAtMDU8L0F0dHJpYjpQb3N0ZWQ+CiAgICAgPEF0dHJpYjpSZWZlcmVuY2U+cmVmZXJlbmNlPC9BdHRyaWI6UmVmZXJlbmNlPgogICAgPC9yZGY6bGk+CiAgIDwvcmRmOlNlcT4KICA8L0F0dHJpYjpBZHM+CiA8L3JkZjpEZXNjcmlwdGlvbj4KCiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0nJwogIHhtbG5zOmRjPSdodHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyc+CiAgPGRjOnRpdGxlPgogICA8cmRmOkFsdD4KICAgIDxyZGY6bGkgeG1sOmxhbmc9J3gtZGVmYXVsdCc+SGVhbHRoTGluayDmt7Hln47nq4vjgb88L3JkZjpsaT4KICAgPC9yZGY6QWx0PgogIDwvZGM6dGl0bGU+CiA8L3JkZjpEZXNjcmlwdGlvbj4KCiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0nJwogIHhtbG5zOnBob3Rvc2hvcD0naHR0cDovL25zLmFkb2JlLmNvbS9waG90b3Nob3AvMS4wLyc+CiAgPHBob3Rvc2hvcDpDb2xvck1vZGU+MzwvcGhvdG9zaG9wOkNvbG9yTW9kZT4KIDwvcmRmOkRlc2NyaXB0aW9uPgo8L3JkZjpSREY+CjwveDp4bXBtZXRhPgo8P3hwYWNrZXQgZW5kPSdyJz8+"
+
 def main():
     st.set_page_config(
         page_title="综合组在线坐席", 
@@ -506,8 +514,22 @@ def main():
                 st.error(f"加载失败: {download_message}")
                 st.stop()
     
-    # 主界面
-    st.title("📊 综合组在线坐席")
+    # 主界面 - 添加logo
+    col_logo, col_title = st.columns([1, 4])
+    with col_logo:
+        # 显示HealthLink远盟康健logo
+        logo_html = f"""
+        <div style="display: flex; align-items: center; justify-content: center; padding: 10px;">
+            <div style="text-align: center;">
+                <h2 style="margin: 0; color: #1E3A8A; font-weight: bold;">HealthLink</h2>
+                <p style="margin: 0; color: #1E3A8A; font-size: 14px;">远盟康健®</p>
+            </div>
+        </div>
+        """
+        st.markdown(logo_html, unsafe_allow_html=True)
+    
+    with col_title:
+        st.title("📊 综合组在线坐席")
     
     # 顶部控制栏
     col1, col2, col3 = st.columns([3, 1, 1])
@@ -717,8 +739,23 @@ def main():
     # 按A/B/C席分类显示坐席
     categorized_data = viewer.categorize_by_seat(schedule_df, view_time)
     
-    # 显示各席位在线人数统计
-    st.subheader(f"📊 {view_date.strftime('%Y年%m月%d日')} 坐席统计")
+    # 显示各席位在线人数统计 - 添加logo
+    col_logo_stat, col_stat_title = st.columns([1, 4])
+    with col_logo_stat:
+        # 显示HealthLink远盟康健logo
+        logo_html = f"""
+        <div style="display: flex; align-items: center; justify-content: center; padding: 10px;">
+            <div style="text-align: center;">
+                <h3 style="margin: 0; color: #1E3A8A; font-weight: bold;">HealthLink</h3>
+                <p style="margin: 0; color: #1E3A8A; font-size: 12px;">远盟康健®</p>
+            </div>
+        </div>
+        """
+        st.markdown(logo_html, unsafe_allow_html=True)
+    
+    with col_stat_title:
+        st.subheader(f"📊 {view_date.strftime('%Y年%m月%d日')} 坐席统计")
+    
     stats_cols = st.columns(3)
     for i, (seat, agents) in enumerate(categorized_data.items()):
         online_count = sum(1 for agent in agents if agent['status'] == '搬砖中')
