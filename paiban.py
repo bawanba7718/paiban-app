@@ -450,6 +450,21 @@ def auto_refresh_time(placeholder):
             
         t.sleep(1)
 
+def filter_data_by_workplace(df, workplace):
+    """根据职场筛选数据"""
+    if workplace == "全部":
+        return df
+    elif workplace in ["重庆", "北京"]:
+        return df[df['workplace'] == workplace]
+    else:
+        return df
+
+def filter_data_by_name(df, name_query):
+    """根据姓名查询筛选数据"""
+    if not name_query:
+        return df
+    return df[df['name'].str.contains(name_query, case=False, na=False)]
+
 def main():
     st.set_page_config(
         page_title="综合组在线坐席", 
@@ -470,10 +485,12 @@ def main():
         st.session_state.auto_refresh = True
     if 'refresh_counter' not in st.session_state:
         st.session_state.refresh_counter = 0
-    if 'selected_date_type' not in st.session_state:
-        st.session_state.selected_date_type = "今日"
     if 'hour_refresh_done' not in st.session_state:
         st.session_state.hour_refresh_done = False
+    if 'workplace_filter' not in st.session_state:
+        st.session_state.workplace_filter = "全部"
+    if 'name_query' not in st.session_state:
+        st.session_state.name_query = ""
     
     # 初始化查看器
     viewer = AgentViewer()
@@ -493,7 +510,7 @@ def main():
     st.title("📊 综合组在线坐席")
     
     # 顶部控制栏
-    col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+    col1, col2, col3 = st.columns([3, 1, 1])
     
     with col1:
         current_datetime = st.empty()
@@ -525,17 +542,6 @@ def main():
                 else:
                     st.error(f"加载失败: {download_message}")
     
-    # 日期类型选择（昨日、今日、明日）
-    with col4:
-        date_type = st.radio(
-            "选择日期",
-            ["昨日", "今日", "明日"],
-            index=["昨日", "今日", "明日"].index(st.session_state.selected_date_type),
-            horizontal=True,
-            key=f"date_type_{st.session_state.refresh_counter}"
-        )
-        st.session_state.selected_date_type = date_type
-    
     st.markdown("---")
     
     # 显示最后更新时间
@@ -553,22 +559,30 @@ def main():
     if info_text:
         st.info(" | ".join(info_text))
     
-    # 根据选择的日期类型计算实际日期
-    today = datetime.now(TZ_UTC_8).date()
-    if st.session_state.selected_date_type == "昨日":
-        view_date = today - timedelta(days=1)
-    elif st.session_state.selected_date_type == "明日":
-        view_date = today + timedelta(days=1)
-    else:
-        view_date = today
+    # 筛选条件
+    col_filter1, col_filter2, col_date, col_time = st.columns([1, 1, 1, 1])
+    
+    with col_filter1:
+        workplace_filter = st.selectbox(
+            "选择职场",
+            ["全部", "重庆", "北京"],
+            key=f"workplace_{st.session_state.refresh_counter}"
+        )
+        st.session_state.workplace_filter = workplace_filter
+    
+    with col_filter2:
+        name_query = st.text_input(
+            "输入姓名查询",
+            placeholder="输入姓名关键字...",
+            key=f"name_query_{st.session_state.refresh_counter}"
+        )
+        st.session_state.name_query = name_query
     
     # 日期和时段选择
-    col_date, col_time = st.columns(2)
-    
     with col_date:
         view_date = st.date_input(
             "选择查看日期", 
-            view_date,
+            datetime.now(TZ_UTC_8).date(),
             key=f"date_{st.session_state.refresh_counter}"
         )
     
@@ -688,6 +702,16 @@ def main():
     
     if schedule_df is None or schedule_df.empty:
         st.warning(f"未找到有效坐席数据")
+        return
+    
+    # 应用职场筛选
+    schedule_df = filter_data_by_workplace(schedule_df, st.session_state.workplace_filter)
+    
+    # 应用姓名查询
+    schedule_df = filter_data_by_name(schedule_df, st.session_state.name_query)
+    
+    if schedule_df.empty:
+        st.warning(f"未找到符合条件的坐席数据")
         return
     
     # 按A/B/C席分类显示坐席
