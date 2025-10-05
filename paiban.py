@@ -82,10 +82,11 @@ class AgentViewer:
                   'break_start': None, 'break_end': None},
         }
 
-    def get_work_status(self, shift_code, seat, color_code, check_time=None):
+    def get_work_status(self, shift_code, seat, color_code, check_time=None, is_today=True):
         """
         修复A席M2休息时间判断逻辑，确保13:00-14:00显示"干饭中"
         新增FEE796颜色T1班次的特殊规则：8:00-17:00为C席，17:00-20:00为A席，休14:00-15:00
+        修正T2班次逻辑：当天的T2班次在非工作时间显示为"正在路上"而不是"已回家"
         """
         if not shift_code or str(shift_code).strip() == '':
             return "未排班", "#BFBFBF", seat
@@ -178,8 +179,17 @@ class AgentViewer:
             
         # 判断是否在上班路上
         is_on_the_way = False
-        if not in_work_time and not is_night_shift:
-            is_on_the_way = check_time < start
+        if not in_work_time:
+            if is_night_shift:
+                # 修正：当天的T2班次在非工作时间显示为"正在路上"
+                if is_today:
+                    is_on_the_way = True
+                else:
+                    # 非当天的T2班次显示为"已回家"
+                    is_on_the_way = False
+            else:
+                # 白班/早班：在当前时间小于开始时间时显示正在路上
+                is_on_the_way = check_time < start
             
         # 重点修复：休息时间判断逻辑，确保13:00-14:00被正确识别
         in_break_time = False
@@ -293,7 +303,7 @@ class AgentViewer:
             st.error(f"加载数据失败: {str(e)}")
             return None
     
-    def categorize_by_seat(self, df, check_time=None):
+    def categorize_by_seat(self, df, check_time=None, is_today=True):
         result = {'A席': [], 'B席': [], 'C席': []}
         if df is None or df.empty:
             return result
@@ -303,7 +313,8 @@ class AgentViewer:
                 person['shift'], 
                 person['seat'], 
                 person['color'],
-                check_time
+                check_time,
+                is_today
             )
             person['status'] = status
             person['status_color'] = status_color
@@ -638,7 +649,7 @@ def main():
         # 合并数据：只保留昨日的T2班次和今日的非T2班次
         combined_data = []
         
-        # 添加昨日的T2班次
+        # 添加昨日的T2班次（非当天，显示为"已回家"）
         if yesterday_df is not None and not yesterday_df.empty:
             for _, person in yesterday_df.iterrows():
                 if 'T2' in str(person['shift']):
@@ -647,7 +658,7 @@ def main():
                     person_copy['date'] = yesterday_date
                     combined_data.append(person_copy)
         
-        # 添加今日的非T2班次
+        # 添加今日的非T2班次（当天，T2显示为"正在路上"）
         if today_df is not None and not today_df.empty:
             for _, person in today_df.iterrows():
                 if 'T2' not in str(person['shift']):
@@ -659,6 +670,30 @@ def main():
         schedule_df = pd.DataFrame(combined_data) if combined_data else pd.DataFrame()
         
         st.info(f"当前查看: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')} (显示{yesterday_date.strftime('%m-%d')}的T2班次和{view_date.strftime('%m-%d')}的其他班次)")
+        
+        # 对昨日的T2班次和今日的班次分别处理
+        if not schedule_df.empty:
+            # 分离昨日的T2班次和今日的班次
+            yesterday_agents = [agent for agent in combined_data if agent.get('is_yesterday', False)]
+            today_agents = [agent for agent in combined_data if not agent.get('is_yesterday', False)]
+            
+            # 分别计算状态
+            yesterday_categorized = viewer.categorize_by_seat(
+                pd.DataFrame(yesterday_agents) if yesterday_agents else pd.DataFrame(), 
+                view_time, 
+                is_today=False  # 昨日的T2班次不是当天
+            )
+            
+            today_categorized = viewer.categorize_by_seat(
+                pd.DataFrame(today_agents) if today_agents else pd.DataFrame(), 
+                view_time, 
+                is_today=True  # 今日的班次是当天
+            )
+            
+            # 合并结果
+            categorized_data = {'A席': [], 'B席': [], 'C席': []}
+            for seat in categorized_data:
+                categorized_data[seat] = yesterday_categorized[seat] + today_categorized[seat]
     
     elif current_hour < 7:
         # 7点之前显示前一天的排班
@@ -678,6 +713,9 @@ def main():
                 )
         
         schedule_df = st.session_state.schedule_data[load_date_key]
+        
+        # 非当天班次
+        categorized_data = viewer.categorize_by_seat(schedule_df, view_time, is_today=False)
     
     else:
         # 8点及之后显示当天的排班
@@ -696,6 +734,9 @@ def main():
                 )
         
         schedule_df = st.session_state.schedule_data[load_date_key]
+        
+        # 当天班次
+        categorized_data = viewer.categorize_by_seat(schedule_df, view_time, is_today=True)
     
     if schedule_df is None or schedule_df.empty:
         st.warning(f"未找到有效坐席数据")
@@ -710,9 +751,6 @@ def main():
     if schedule_df.empty:
         st.warning(f"未找到符合条件的坐席数据")
         return
-    
-    # 按A/B/C席分类显示坐席
-    categorized_data = viewer.categorize_by_seat(schedule_df, view_time)
     
     # 看板式布局 - 三列并排
     st.subheader(f"{view_date.strftime('%Y年%m月%d日')} {weekday} 坐席看板")
