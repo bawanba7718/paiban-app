@@ -392,20 +392,20 @@ def create_agent_card(person_info, viewer):
         date_info = f" ({person_info['date'].strftime('%m-%d')})"
     
     card_html = f"""
-    <div style="background-color: {bg_color}; border: 2px solid #000000; border-radius: 8px; padding: 12px; margin: 8px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+    <div style="background-color: {bg_color}; border: 2px solid #000000; border-radius: 6px; padding: 8px; margin: 4px 0; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
         <div style="display: flex; align-items: center; justify-content: space-between;">
             <div style="width: 30%;">
-                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">工号: {person_info['id']}</p>
-                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">职场: {person_info['workplace']}</p>
+                <p style="margin: 3px 0; font-size: 12px; font-weight: bold;">工号: {person_info['id']}</p>
+                <p style="margin: 3px 0; font-size: 12px; font-weight: bold;">职场: {person_info['workplace']}</p>
             </div>
             <div style="width: 40%; text-align: center;">
-                <h3 style="margin: 0 0 8px 0; font-size: 18px; font-weight: bold;">{person_info['name']}</h3>
-                <span style="font-size: 24px; display: block; margin-bottom: 4px;">{status_icon}</span>
-                <p style="margin: 0; font-size: 16px; font-weight: bold; color: {status_color};">{person_info['status']}</p>
+                <h3 style="margin: 0 0 4px 0; font-size: 16px; font-weight: bold;">{person_info['name']}</h3>
+                <span style="font-size: 20px; display: block; margin-bottom: 2px;">{status_icon}</span>
+                <p style="margin: 0; font-size: 14px; font-weight: bold; color: {status_color};">{person_info['status']}</p>
             </div>
             <div style="width: 30%; text-align: right;">
-                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">班次: {person_info['shift']}{date_info}</p>
-                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">席位: {display_seat}</p>
+                <p style="margin: 3px 0; font-size: 12px; font-weight: bold;">班次: {person_info['shift']}{date_info}</p>
+                <p style="margin: 3px 0; font-size: 12px; font-weight: bold;">席位: {display_seat}</p>
             </div>
         </div>
     </div>
@@ -415,14 +415,14 @@ def create_agent_card(person_info, viewer):
 
 def create_stat_card(seat, online_count, total_count, color):
     return f"""
-    <div style="background-color: {color}; border: 2px solid #000000; border-radius: 8px; padding: 12px; margin: 8px 0; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-        <h3 style="margin: 0 0 6px 0; font-size: 18px; font-weight: bold;">{seat}</h3>
+    <div style="background-color: {color}; border: 2px solid #000000; border-radius: 6px; padding: 8px; margin: 4px 0; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+        <h3 style="margin: 0 0 4px 0; font-size: 16px; font-weight: bold;">{seat}</h3>
         <div style="display: flex; justify-content: center; align-items: baseline;">
-            <span style="font-size: 26px; font-weight: bold; color: #2E8B57;">{online_count}</span>
-            <span style="font-size: 18px; color: black; margin: 0 6px;">/</span>
-            <span style="font-size: 22px; font-weight: bold; color: black;">{total_count}</span>
+            <span style="font-size: 22px; font-weight: bold; color: #2E8B57;">{online_count}</span>
+            <span style="font-size: 16px; color: black; margin: 0 4px;">/</span>
+            <span style="font-size: 18px; font-weight: bold; color: black;">{total_count}</span>
         </div>
-        <p style="margin: 4px 0 0 0; color: black; font-size: 14px;">在线/总人数</p>
+        <p style="margin: 2px 0 0 0; color: black; font-size: 12px;">在线/总人数</p>
     </div>
     """
 
@@ -511,10 +511,10 @@ def main():
     with col_logo:
         # 显示HealthLink远盟康健logo - 绿色
         logo_html = """
-        <div style="display: flex; align-items: center; justify-content: center; padding: 10px;">
+        <div style="display: flex; align-items: center; justify-content: center; padding: 5px;">
             <div style="text-align: center;">
                 <h2 style="margin: 0; color: #2E8B57; font-weight: bold;">HealthLink</h2>
-                <p style="margin: 0; color: #2E8B57; font-size: 14px;">远盟康健®</p>
+                <p style="margin: 0; color: #2E8B57; font-size: 12px;">远盟康健®</p>
             </div>
         </div>
         """
@@ -573,7 +573,7 @@ def main():
     if info_text:
         st.info(" | ".join(info_text))
     
-    # 筛选条件
+    # 筛选条件 - 减小间距
     col_filter1, col_filter2, col_date, col_time = st.columns([1, 1, 1, 1])
     
     with col_filter1:
@@ -736,10 +736,10 @@ def main():
     with col_logo_stat:
         # 显示HealthLink远盟康健logo - 绿色
         logo_html = """
-        <div style="display: flex; align-items: center; justify-content: center; padding: 10px;">
+        <div style="display: flex; align-items: center; justify-content: center; padding: 5px;">
             <div style="text-align: center;">
                 <h3 style="margin: 0; color: #2E8B57; font-weight: bold;">HealthLink</h3>
-                <p style="margin: 0; color: #2E8B57; font-size: 12px;">远盟康健®</p>
+                <p style="margin: 0; color: #2E8B57; font-size: 10px;">远盟康健®</p>
             </div>
         </div>
         """
@@ -748,6 +748,7 @@ def main():
     with col_stat_title:
         st.subheader(f"{view_date.strftime('%Y年%m月%d日')} 坐席统计")  # 去掉📊图标
     
+    # 减小统计卡片间距
     stats_cols = st.columns(3)
     for i, (seat, agents) in enumerate(categorized_data.items()):
         online_count = sum(1 for agent in agents if agent['status'] == '搬砖中')
@@ -759,11 +760,11 @@ def main():
     
     st.markdown("---")
     
-    # 分栏显示各类型坐席
+    # 分栏显示各类型坐席 - 减小间距
     cols = st.columns(3)
     for i, (seat, agents) in enumerate(categorized_data.items()):
         with cols[i]:
-            st.markdown(f"### <span style='background-color:{viewer.seat_colors[seat]}; color:black; padding:4px 8px; border-radius:4px; border: 1px solid #000000;'>{seat}</span>", unsafe_allow_html=True)
+            st.markdown(f"### <span style='background-color:{viewer.seat_colors[seat]}; color:black; padding:2px 6px; border-radius:4px; border: 1px solid #000000;'>{seat}</span>", unsafe_allow_html=True)
             if agents:
                 for idx, agent in enumerate(agents):
                     st.markdown(create_agent_card(agent, viewer), unsafe_allow_html=True)
