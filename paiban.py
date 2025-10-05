@@ -27,8 +27,8 @@ class AgentViewer:
             'FADADE': 'B席',
             '8CDDFA': '休',
             'FFFF00': '休',
-            'FFFFFF': 'A席',  # 无颜色/白色为A席
-            'FEE796': 'C席',  # 新增FEE796颜色为C席
+            'FFFFFF': 'A席',
+            'FEE796': 'C席',
         }
         
         # 席位颜色映射
@@ -48,14 +48,14 @@ class AgentViewer:
             '未知班次': '❓'
         }
         
-        # 班次时间定义（基础时间）
+        # 班次时间定义
         self.shift_times = {
             'T1': {'start': time(8, 0), 'end': time(20, 0), 'name': '白班', 
                   'break_start': time(13, 0), 'break_end': time(14, 0)},
             'T2': {'start': time(20, 0), 'end': time(8, 0), 'name': '夜班',
                   'break_start': None, 'break_end': None},
             'M2': {'start': time(8, 0), 'end': time(17, 0), 'name': '早班',
-                  'break_start': time(14, 0), 'break_end': time(15, 0)},  # 基础设置，会被A席规则覆盖
+                  'break_start': time(14, 0), 'break_end': time(15, 0)},
             'E2': {'start': time(13, 0), 'end': time(22, 0), 'name': '晚班',
                   'break_start': time(15, 0), 'break_end': time(16, 0)},
             'E3': {'start': time(13, 0), 'end': time(23, 0), 'name': '晚班',
@@ -83,17 +83,14 @@ class AgentViewer:
         }
 
     def get_work_status(self, shift_code, seat, color_code, check_time=None):
-        """
-        修复A席M2休息时间判断逻辑，确保13:00-14:00显示"干饭中"
-        新增FEE796颜色T1班次的特殊规则：8:00-17:00为C席，17:00-20:00为A席，休14:00-15:00
-        """
+        """获取工作状态"""
         if not shift_code or str(shift_code).strip() == '':
             return "未排班", "#BFBFBF", seat
             
         shift_code = str(shift_code).strip()
         main_shift = None
         
-        # 强制提取主班次（优先匹配完整班次代码）
+        # 提取主班次
         for s in sorted(self.shift_times.keys(), key=lambda x: len(x), reverse=True):
             if s in shift_code:
                 main_shift = s
@@ -105,31 +102,27 @@ class AgentViewer:
         # 复制基础班次时间
         shift = self.shift_times[main_shift].copy()
         
-        # 重点修复：A席M2（无论颜色）统一休13:00-14:00
-        # 扩大匹配范围，确保所有A席M2都应用此规则
+        # A席M2统一休13:00-14:00
         if seat == 'A席' and main_shift == 'M2':
-            # 强制设置休息时间，覆盖任何基础设置
             shift['break_start'] = time(13, 0)
             shift['break_end'] = time(14, 0)
         
-        # FEE796颜色T1班次特殊规则：8:00-17:00为C席，17:00-20:00为A席，休14:00-15:00
+        # FEE796颜色T1班次特殊规则
         elif color_code == 'FEE796' and main_shift == 'T1':
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
             
-            # 动态调整席位：8:00-17:00为C席，17:00-20:00为A席
             check_time = check_time or datetime.now(TZ_UTC_8).time()
             if time(17, 0) <= check_time < time(20, 0):
-                seat = 'A席'  # 17:00-20:00期间视为A席
+                seat = 'A席'
             else:
-                seat = 'C席'  # 8:00-17:00期间视为C席
+                seat = 'C席'
         
-        # EF949F T1 B席休14:00-15:00
+        # 其他特殊规则
         elif seat == 'B席' and color_code == 'EF949F' and main_shift == 'T1':
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
         
-        # 其他规则保持不变
         elif seat == 'A席' and main_shift == 'D2':
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
@@ -158,14 +151,14 @@ class AgentViewer:
             shift['break_start'] = time(14, 0)
             shift['break_end'] = time(15, 0)
             
-        # 使用东八区时间，默认当前时间
+        # 使用东八区时间
         check_time = check_time or datetime.now(TZ_UTC_8).time()
         
         # 解构时间参数
         start, end = shift['start'], shift['end']
         break_start, break_end = shift.get('break_start'), shift.get('break_end')
         
-        # 判断是否在工作时间内（优化跨天逻辑）
+        # 判断是否在工作时间内
         is_night_shift = main_shift == 'T2'
         in_work_time = False
         
@@ -181,15 +174,16 @@ class AgentViewer:
         if not in_work_time and not is_night_shift:
             is_on_the_way = check_time < start
             
-        # 重点修复：休息时间判断逻辑，确保13:00-14:00被正确识别
+        # 修正：当天的T2班次在非工作时间显示为"正在路上"
+        if is_night_shift and not in_work_time:
+            is_on_the_way = True
+            
+        # 休息时间判断
         in_break_time = False
         if break_start and break_end and in_work_time:
-            # 确保休息时间是当天范围内（非跨天）
             if break_start < break_end:
-                # 正常时间范围（如13:00-14:00）
                 in_break_time = break_start <= check_time < break_end
             else:
-                # 跨天休息时间（本系统不适用，但保留逻辑）
                 in_break_time = check_time >= break_start or check_time < break_end
         
         # 确定最终状态
@@ -209,7 +203,7 @@ class AgentViewer:
                 if color:
                     color_str = str(color).upper()
                     if color_str.startswith('FF'):
-                        color_str = color_str[2:]  # 去除alpha通道
+                        color_str = color_str[2:]
                     elif len(color_str) == 8:
                         color_str = color_str[2:]
                     return color_str if len(color_str) == 6 else "FFFFFF"
@@ -279,8 +273,8 @@ class AgentViewer:
                         'seat': seat,
                         'status': '',
                         'status_color': '',
-                        'actual_seat': seat,  # 新增字段，用于存储实际席位
-                        'date': target_date  # 添加日期信息，用于区分班次
+                        'actual_seat': seat,
+                        'date': target_date
                     }
                     
                     color_data.append(person_info)
@@ -307,15 +301,15 @@ class AgentViewer:
             )
             person['status'] = status
             person['status_color'] = status_color
-            person['actual_seat'] = actual_seat  # 存储实际席位（考虑动态变化）
+            person['actual_seat'] = actual_seat
             
-            seat = actual_seat  # 使用实际席位进行分类
+            seat = actual_seat
             if seat in result:
                 result[seat].append(person)
             else:
                 result['A席'].append(person)
         
-        # 排序逻辑：优先状态（搬砖中在前），同状态按上班时间排序
+        # 排序逻辑
         status_priority = {
             '搬砖中': 3,
             '干饭中': 2,
@@ -379,16 +373,13 @@ def create_compact_agent_card(person_info, viewer):
     # 状态颜色
     if person_info['status'] in ["正在路上", "已回家"]:
         status_color = "#BFBFBF"
-        bg_color = "#F5F5F5"  # 浅灰色背景
+        bg_color = "#F5F5F5"
         border_color = "#DDD"
     else:
         status_color = person_info['status_color']
         seat_type = person_info.get('actual_seat', person_info['seat'])
         bg_color = f"#{person_info['color']}" if seat_type in ['B席', 'C席'] else "#FFFFFF"
         border_color = "#333"
-    
-    # 显示实际席位
-    display_seat = person_info.get('actual_seat', person_info['seat'])
     
     # 紧凑卡片设计
     card_html = f"""
@@ -453,21 +444,13 @@ def main():
         page_icon="📊"
     )
     
-    # 初始化session state
+    # 简化session state管理
     if 'file_path' not in st.session_state:
         st.session_state.file_path = None
     if 'last_download' not in st.session_state:
         st.session_state.last_download = None
-    if 'last_refresh' not in st.session_state:
-        st.session_state.last_refresh = None
-    if 'schedule_data' not in st.session_state:
-        st.session_state.schedule_data = {}
-    if 'auto_refresh' not in st.session_state:
-        st.session_state.auto_refresh = True
     if 'refresh_counter' not in st.session_state:
         st.session_state.refresh_counter = 0
-    if 'hour_refresh_done' not in st.session_state:
-        st.session_state.hour_refresh_done = False
     if 'workplace_filter' not in st.session_state:
         st.session_state.workplace_filter = "全部"
     if 'name_query' not in st.session_state:
@@ -487,12 +470,10 @@ def main():
                 st.error(f"加载失败: {download_message}")
                 st.stop()
     
-    # 主界面 - 看板式布局
-    # 顶部标题栏
-    col_logo, col_title, col_date = st.columns([1, 3, 2])
+    # 主界面 - 简化布局
+    col_logo, col_title = st.columns([1, 4])
     
     with col_logo:
-        # 显示HealthLink远盟康健logo - 绿色
         logo_html = """
         <div style="display: flex; align-items: center; justify-content: center; padding: 5px;">
             <div style="text-align: center;">
@@ -506,17 +487,7 @@ def main():
     with col_title:
         st.title("综合组在线坐席")
     
-    with col_date:
-        current_datetime = st.empty()
-        if 'time_thread' not in st.session_state:
-            st.session_state.time_thread = threading.Thread(
-                target=auto_refresh_time, 
-                args=(current_datetime,), 
-                daemon=True
-            )
-            st.session_state.time_thread.start()
-    
-    # 控制按钮栏
+    # 简化控制栏
     col_controls = st.columns([2, 1, 1, 1])
     
     with col_controls[0]:
@@ -565,9 +536,7 @@ def main():
         col_refresh1, col_refresh2 = st.columns(2)
         with col_refresh1:
             if st.button("🔄 刷新", use_container_width=True):
-                st.session_state.last_refresh = datetime.now(TZ_UTC_8)
                 st.session_state.refresh_counter += 1
-                st.session_state.schedule_data = {}
                 st.success("状态已刷新")
         
         with col_refresh2:
@@ -577,7 +546,6 @@ def main():
                     if download_success:
                         st.session_state.file_path = file_path
                         st.session_state.last_download = datetime.now(TZ_UTC_8)
-                        st.session_state.schedule_data = {}
                         st.session_state.refresh_counter += 1
                         st.success("数据已更新")
                     else:
@@ -585,117 +553,36 @@ def main():
     
     st.markdown("---")
     
-    # 显示最后更新时间
-    info_text = []
-    if st.session_state.last_download:
-        info_text.append(f"班表更新: {st.session_state.last_download.strftime('%H:%M:%S')}")
-    if st.session_state.last_refresh:
-        info_text.append(f"状态刷新: {st.session_state.last_refresh.strftime('%H:%M:%S')}")
-    
-    # 显示下次自动刷新时间
-    now = datetime.now(TZ_UTC_8)
-    next_hour = (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
-    info_text.append(f"下次刷新: {next_hour.strftime('%H:%M:%S')}")
-    
-    if info_text:
-        st.caption(" | ".join(info_text))
-    
     # 显示当前查看时间
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
     weekday = weekdays[view_date.weekday()]
     
+    # 简化数据加载逻辑
     current_hour = view_time.hour
     
-    # 修复7-8点时间段班次显示问题
-    # 在7-8点时间段，需要同时显示昨日的T2班次和今日的早班班次
-    if 7 <= current_hour < 8:
-        # 同时加载昨日和今日的数据
-        yesterday_date = view_date - timedelta(days=1)
-        
-        # 使用日期字符串作为缓存键
-        yesterday_key = yesterday_date.strftime('%Y-%m-%d')
-        today_key = view_date.strftime('%Y-%m-%d')
-        
-        # 加载昨日数据
-        if yesterday_key not in st.session_state.schedule_data:
-            with st.spinner(f"正在加载{yesterday_date.strftime('%Y年%m月%d日')}的坐席数据，请稍候..."):
-                st.session_state.schedule_data[yesterday_key] = viewer.load_schedule_with_colors(
-                    st.session_state.file_path, 
-                    yesterday_date
-                )
-        
-        # 加载今日数据
-        if today_key not in st.session_state.schedule_data:
-            with st.spinner(f"正在加载{view_date.strftime('%Y年%m月%d日')}的坐席数据，请稍候..."):
-                st.session_state.schedule_data[today_key] = viewer.load_schedule_with_colors(
-                    st.session_state.file_path, 
-                    view_date
-                )
-        
-        yesterday_df = st.session_state.schedule_data[yesterday_key]
-        today_df = st.session_state.schedule_data[today_key]
-        
-        # 合并数据：只保留昨日的T2班次和今日的非T2班次
-        combined_data = []
-        
-        # 添加昨日的T2班次
-        if yesterday_df is not None and not yesterday_df.empty:
-            for _, person in yesterday_df.iterrows():
-                if 'T2' in str(person['shift']):
-                    person_copy = person.copy()
-                    person_copy['is_yesterday'] = True
-                    person_copy['date'] = yesterday_date
-                    combined_data.append(person_copy)
-        
-        # 添加今日的非T2班次
-        if today_df is not None and not today_df.empty:
-            for _, person in today_df.iterrows():
-                if 'T2' not in str(person['shift']):
-                    person_copy = person.copy()
-                    person_copy['is_yesterday'] = False
-                    person_copy['date'] = view_date
-                    combined_data.append(person_copy)
-        
-        schedule_df = pd.DataFrame(combined_data) if combined_data else pd.DataFrame()
-        
-        st.info(f"当前查看: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')} (显示{yesterday_date.strftime('%m-%d')}的T2班次和{view_date.strftime('%m-%d')}的其他班次)")
-    
-    elif current_hour < 7:
-        # 7点之前显示前一天的排班
+    # 确定加载日期
+    if current_hour < 8:
+        # 8点之前显示前一天的排班
         load_date = view_date - timedelta(days=1)
-        load_weekday = weekdays[load_date.weekday()]
-        st.info(f"当前查看: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')} (显示{load_date.strftime('%Y年%m月%d日')} {load_weekday}的排班数据)")
-        
-        # 使用日期字符串作为缓存键
-        load_date_key = load_date.strftime('%Y-%m-%d')
-        
-        # 加载对应日期的数据
-        if load_date_key not in st.session_state.schedule_data:
-            with st.spinner(f"正在加载{load_date.strftime('%Y年%m月%d日')}的坐席数据，请稍候..."):
-                st.session_state.schedule_data[load_date_key] = viewer.load_schedule_with_colors(
-                    st.session_state.file_path, 
-                    load_date
-                )
-        
-        schedule_df = st.session_state.schedule_data[load_date_key]
-    
+        st.info(f"当前查看: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')} (显示{load_date.strftime('%Y年%m月%d日')}的排班数据)")
     else:
         # 8点及之后显示当天的排班
         load_date = view_date
         st.info(f"当前查看: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')}")
-        
-        # 使用日期字符串作为缓存键
-        load_date_key = load_date.strftime('%Y-%m-%d')
-        
-        # 加载对应日期的数据
-        if load_date_key not in st.session_state.schedule_data:
-            with st.spinner(f"正在加载{load_date.strftime('%Y年%m月%d日')}的坐席数据，请稍候..."):
-                st.session_state.schedule_data[load_date_key] = viewer.load_schedule_with_colors(
-                    st.session_state.file_path, 
-                    load_date
-                )
-        
-        schedule_df = st.session_state.schedule_data[load_date_key]
+    
+    # 使用日期字符串作为缓存键
+    load_date_key = load_date.strftime('%Y-%m-%d')
+    
+    # 加载对应日期的数据
+    if f"schedule_{load_date_key}" not in st.session_state:
+        with st.spinner(f"正在加载{load_date.strftime('%Y年%m月%d日')}的坐席数据，请稍候..."):
+            schedule_df = viewer.load_schedule_with_colors(
+                st.session_state.file_path, 
+                load_date
+            )
+            st.session_state[f"schedule_{load_date_key}"] = schedule_df
+    else:
+        schedule_df = st.session_state[f"schedule_{load_date_key}"]
     
     if schedule_df is None or schedule_df.empty:
         st.warning(f"未找到有效坐席数据")
@@ -720,7 +607,7 @@ def main():
     # 创建三列
     col_a, col_b, col_c = st.columns(3)
     
-    # A席看板
+    # A席看板 - 修复网格布局
     with col_a:
         agents_a = categorized_data.get('A席', [])
         online_count_a = sum(1 for agent in agents_a if agent['status'] == '搬砖中')
@@ -733,7 +620,7 @@ def main():
         </div>
         """, unsafe_allow_html=True)
         
-        # 坐席网格
+        # 坐席网格 - 每行显示2个坐席
         if agents_a:
             # 计算每行显示的坐席数量
             cols_per_row = 2
@@ -746,7 +633,7 @@ def main():
         else:
             st.info("暂无A席坐席")
     
-    # B席看板
+    # B席看板 - 修复网格布局
     with col_b:
         agents_b = categorized_data.get('B席', [])
         online_count_b = sum(1 for agent in agents_b if agent['status'] == '搬砖中')
@@ -759,7 +646,7 @@ def main():
         </div>
         """, unsafe_allow_html=True)
         
-        # 坐席网格
+        # 坐席网格 - 每行显示2个坐席
         if agents_b:
             # 计算每行显示的坐席数量
             cols_per_row = 2
@@ -772,7 +659,7 @@ def main():
         else:
             st.info("暂无B席坐席")
     
-    # C席看板
+    # C席看板 - 修复网格布局
     with col_c:
         agents_c = categorized_data.get('C席', [])
         online_count_c = sum(1 for agent in agents_c if agent['status'] == '搬砖中')
@@ -785,7 +672,7 @@ def main():
         </div>
         """, unsafe_allow_html=True)
         
-        # 坐席网格
+        # 坐席网格 - 每行显示2个坐席
         if agents_c:
             # 计算每行显示的坐席数量
             cols_per_row = 2
