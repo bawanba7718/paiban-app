@@ -372,59 +372,40 @@ def download_from_jiananguo():
     except Exception as e:
         return False, None, f"下载失败: {str(e)}"
 
-def create_agent_card(person_info, viewer):
+def create_compact_agent_card(person_info, viewer):
+    """创建紧凑型坐席卡片"""
     status_icon = viewer.status_icons.get(person_info['status'], '❓')
     
+    # 状态颜色
     if person_info['status'] in ["正在路上", "已回家"]:
         status_color = "#BFBFBF"
-        bg_color = "#BFBFBF"
+        bg_color = "#F5F5F5"  # 浅灰色背景
+        border_color = "#DDD"
     else:
         status_color = person_info['status_color']
-        seat_type = person_info.get('actual_seat', person_info['seat'])  # 优先使用实际席位
+        seat_type = person_info.get('actual_seat', person_info['seat'])
         bg_color = f"#{person_info['color']}" if seat_type in ['B席', 'C席'] else "#FFFFFF"
+        border_color = "#333"
     
     # 显示实际席位
     display_seat = person_info.get('actual_seat', person_info['seat'])
     
-    # 添加日期信息显示（如果是昨日的班次）
-    date_info = ""
-    if hasattr(person_info, 'date') and person_info.get('is_yesterday', False):
-        date_info = f" ({person_info['date'].strftime('%m-%d')})"
-    
+    # 紧凑卡片设计
     card_html = f"""
-    <div style="background-color: {bg_color}; border: 2px solid #000000; border-radius: 8px; padding: 12px; margin: 8px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-            <div style="width: 30%;">
-                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">工号: {person_info['id']}</p>
-                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">职场: {person_info['workplace']}</p>
-            </div>
-            <div style="width: 40%; text-align: center;">
-                <h3 style="margin: 0 0 8px 0; font-size: 18px; font-weight: bold;">{person_info['name']}</h3>
-                <span style="font-size: 24px; display: block; margin-bottom: 4px;">{status_icon}</span>
-                <p style="margin: 0; font-size: 16px; font-weight: bold; color: {status_color};">{person_info['status']}</p>
-            </div>
-            <div style="width: 30%; text-align: right;">
-                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">班次: {person_info['shift']}{date_info}</p>
-                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">席位: {display_seat}</p>
-            </div>
+    <div style="background-color: {bg_color}; border: 1px solid {border_color}; border-radius: 4px; padding: 6px; margin: 2px; min-height: 60px; display: flex; flex-direction: column; justify-content: center;">
+        <div style="font-size: 14px; font-weight: bold; text-align: center; margin-bottom: 4px;">{person_info['name']}</div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 12px; color: #666;">{person_info['workplace']}</div>
+            <div style="font-size: 16px;">{status_icon}</div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
+            <div style="font-size: 11px; font-weight: bold;">{person_info['shift']}</div>
+            <div style="font-size: 11px; color: {status_color}; font-weight: bold;">{person_info['status']}</div>
         </div>
     </div>
     """
     
     return card_html
-
-def create_stat_card(seat, online_count, total_count, color):
-    return f"""
-    <div style="background-color: {color}; border: 2px solid #000000; border-radius: 8px; padding: 12px; margin: 8px 0; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-        <h3 style="margin: 0 0 6px 0; font-size: 18px; font-weight: bold;">{seat}</h3>
-        <div style="display: flex; justify-content: center; align-items: baseline;">
-            <span style="font-size: 26px; font-weight: bold; color: #2E8B57;">{online_count}</span>
-            <span style="font-size: 18px; color: black; margin: 0 6px;">/</span>
-            <span style="font-size: 22px; font-weight: bold; color: black;">{total_count}</span>
-        </div>
-        <p style="margin: 4px 0 0 0; color: black; font-size: 14px;">在线/总人数</p>
-    </div>
-    """
 
 def update_current_time():
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
@@ -506,27 +487,26 @@ def main():
                 st.error(f"加载失败: {download_message}")
                 st.stop()
     
-    # 主界面 - 添加绿色logo
-    col_logo, col_title = st.columns([1, 4])
+    # 主界面 - 看板式布局
+    # 顶部标题栏
+    col_logo, col_title, col_date = st.columns([1, 3, 2])
+    
     with col_logo:
         # 显示HealthLink远盟康健logo - 绿色
         logo_html = """
-        <div style="display: flex; align-items: center; justify-content: center; padding: 10px;">
+        <div style="display: flex; align-items: center; justify-content: center; padding: 5px;">
             <div style="text-align: center;">
                 <h2 style="margin: 0; color: #2E8B57; font-weight: bold;">HealthLink</h2>
-                <p style="margin: 0; color: #2E8B57; font-size: 14px;">远盟康健®</p>
+                <p style="margin: 0; color: #2E8B57; font-size: 12px;">远盟康健®</p>
             </div>
         </div>
         """
         st.markdown(logo_html, unsafe_allow_html=True)
     
     with col_title:
-        st.title("综合组在线坐席")  # 去掉📊图标
+        st.title("综合组在线坐席")
     
-    # 顶部控制栏
-    col1, col2, col3 = st.columns([3, 1, 1])
-    
-    with col1:
+    with col_date:
         current_datetime = st.empty()
         if 'time_thread' not in st.session_state:
             st.session_state.time_thread = threading.Thread(
@@ -536,78 +516,43 @@ def main():
             )
             st.session_state.time_thread.start()
     
-    with col2:
-        if st.button("🔄 刷新状态", use_container_width=True):
-            st.session_state.last_refresh = datetime.now(TZ_UTC_8)
-            st.session_state.refresh_counter += 1
-            st.session_state.schedule_data = {}
-            st.success("状态已刷新")
+    # 控制按钮栏
+    col_controls = st.columns([2, 1, 1, 1])
     
-    with col3:
-        if st.button("🔄 重新加载", use_container_width=True):
-            with st.spinner("重新加载中..."):
-                download_success, file_path, download_message = download_from_jiananguo()
-                if download_success:
-                    st.session_state.file_path = file_path
-                    st.session_state.last_download = datetime.now(TZ_UTC_8)
-                    st.session_state.schedule_data = {}
-                    st.session_state.refresh_counter += 1
-                    st.success("数据已更新")
-                else:
-                    st.error(f"加载失败: {download_message}")
+    with col_controls[0]:
+        # 搜索和筛选区域
+        col_search, col_filter = st.columns([2, 1])
+        with col_search:
+            name_query = st.text_input(
+                "搜索姓名",
+                placeholder="输入姓名关键字...",
+                key=f"name_query_{st.session_state.refresh_counter}"
+            )
+            st.session_state.name_query = name_query
+        
+        with col_filter:
+            workplace_filter = st.selectbox(
+                "选择职场",
+                ["全部", "重庆", "北京"],
+                key=f"workplace_{st.session_state.refresh_counter}"
+            )
+            st.session_state.workplace_filter = workplace_filter
     
-    st.markdown("---")
-    
-    # 显示最后更新时间
-    info_text = []
-    if st.session_state.last_download:
-        info_text.append(f"班表最后更新: {st.session_state.last_download.strftime('%Y-%m-%d %H:%M:%S')}")
-    if st.session_state.last_refresh:
-        info_text.append(f"状态最后刷新: {st.session_state.last_refresh.strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    # 显示下次自动刷新时间
-    now = datetime.now(TZ_UTC_8)
-    next_hour = (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
-    info_text.append(f"下次自动刷新: {next_hour.strftime('%H:%M:%S')}")
-    
-    if info_text:
-        st.info(" | ".join(info_text))
-    
-    # 筛选条件
-    col_filter1, col_filter2, col_date, col_time = st.columns([1, 1, 1, 1])
-    
-    with col_filter1:
-        workplace_filter = st.selectbox(
-            "选择职场",
-            ["全部", "重庆", "北京"],
-            key=f"workplace_{st.session_state.refresh_counter}"
-        )
-        st.session_state.workplace_filter = workplace_filter
-    
-    with col_filter2:
-        name_query = st.text_input(
-            "输入姓名查询",
-            placeholder="输入姓名关键字...",
-            key=f"name_query_{st.session_state.refresh_counter}"
-        )
-        st.session_state.name_query = name_query
-    
-    # 日期和时段选择
-    with col_date:
+    with col_controls[1]:
         view_date = st.date_input(
-            "选择查看日期", 
+            "选择日期", 
             datetime.now(TZ_UTC_8).date(),
             key=f"date_{st.session_state.refresh_counter}"
         )
     
-    with col_time:
+    with col_controls[2]:
         hour_options = [f"{h:02d}:00" for h in range(24)]
         current_hour_str = f"{datetime.now(TZ_UTC_8).hour:02d}:00"
         
         default_idx = hour_options.index(current_hour_str) if current_hour_str in hour_options else 0
         
         selected_time_str = st.selectbox(
-            "选择查看时段", 
+            "选择时间", 
             hour_options,
             index=default_idx,
             key=f"time_{st.session_state.refresh_counter}"
@@ -615,6 +560,45 @@ def main():
         
         hour = int(selected_time_str.split(":")[0])
         view_time = time(hour, 0)
+    
+    with col_controls[3]:
+        col_refresh1, col_refresh2 = st.columns(2)
+        with col_refresh1:
+            if st.button("🔄 刷新", use_container_width=True):
+                st.session_state.last_refresh = datetime.now(TZ_UTC_8)
+                st.session_state.refresh_counter += 1
+                st.session_state.schedule_data = {}
+                st.success("状态已刷新")
+        
+        with col_refresh2:
+            if st.button("📥 重载", use_container_width=True):
+                with st.spinner("重新加载中..."):
+                    download_success, file_path, download_message = download_from_jiananguo()
+                    if download_success:
+                        st.session_state.file_path = file_path
+                        st.session_state.last_download = datetime.now(TZ_UTC_8)
+                        st.session_state.schedule_data = {}
+                        st.session_state.refresh_counter += 1
+                        st.success("数据已更新")
+                    else:
+                        st.error(f"加载失败: {download_message}")
+    
+    st.markdown("---")
+    
+    # 显示最后更新时间
+    info_text = []
+    if st.session_state.last_download:
+        info_text.append(f"班表更新: {st.session_state.last_download.strftime('%H:%M:%S')}")
+    if st.session_state.last_refresh:
+        info_text.append(f"状态刷新: {st.session_state.last_refresh.strftime('%H:%M:%S')}")
+    
+    # 显示下次自动刷新时间
+    now = datetime.now(TZ_UTC_8)
+    next_hour = (now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1))
+    info_text.append(f"下次刷新: {next_hour.strftime('%H:%M:%S')}")
+    
+    if info_text:
+        st.caption(" | ".join(info_text))
     
     # 显示当前查看时间
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
@@ -627,7 +611,6 @@ def main():
     if 7 <= current_hour < 8:
         # 同时加载昨日和今日的数据
         yesterday_date = view_date - timedelta(days=1)
-        yesterday_weekday = weekdays[yesterday_date.weekday()]
         
         # 使用日期字符串作为缓存键
         yesterday_key = yesterday_date.strftime('%Y-%m-%d')
@@ -731,44 +714,89 @@ def main():
     # 按A/B/C席分类显示坐席
     categorized_data = viewer.categorize_by_seat(schedule_df, view_time)
     
-    # 显示各席位在线人数统计 - 添加绿色logo
-    col_logo_stat, col_stat_title = st.columns([1, 4])
-    with col_logo_stat:
-        # 显示HealthLink远盟康健logo - 绿色
-        logo_html = """
-        <div style="display: flex; align-items: center; justify-content: center; padding: 10px;">
-            <div style="text-align: center;">
-                <h3 style="margin: 0; color: #2E8B57; font-weight: bold;">HealthLink</h3>
-                <p style="margin: 0; color: #2E8B57; font-size: 12px;">远盟康健®</p>
-            </div>
-        </div>
-        """
-        st.markdown(logo_html, unsafe_allow_html=True)
+    # 看板式布局 - 三列并排
+    st.subheader(f"{view_date.strftime('%Y年%m月%d日')} {weekday} 坐席看板")
     
-    with col_stat_title:
-        st.subheader(f"{view_date.strftime('%Y年%m月%d日')} 坐席统计")  # 去掉📊图标
+    # 创建三列
+    col_a, col_b, col_c = st.columns(3)
     
-    stats_cols = st.columns(3)
-    for i, (seat, agents) in enumerate(categorized_data.items()):
-        online_count = sum(1 for agent in agents if agent['status'] == '搬砖中')
-        total_count = len(agents)
-        seat_color = viewer.seat_colors[seat]
+    # A席看板
+    with col_a:
+        agents_a = categorized_data.get('A席', [])
+        online_count_a = sum(1 for agent in agents_a if agent['status'] == '搬砖中')
+        total_count_a = len(agents_a)
         
-        with stats_cols[i]:
-            st.markdown(create_stat_card(seat, online_count, total_count, seat_color), unsafe_allow_html=True)
+        # 席位标题
+        st.markdown(f"""
+        <div style="background-color: #FFFFFF; border: 2px solid #333; border-radius: 6px; padding: 8px; margin-bottom: 8px; text-align: center;">
+            <h3 style="margin: 0; color: #333;">A席 ({online_count_a}/{total_count_a})</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # 坐席网格
+        if agents_a:
+            # 计算每行显示的坐席数量
+            cols_per_row = 2
+            for i in range(0, len(agents_a), cols_per_row):
+                cols = st.columns(cols_per_row)
+                for j in range(cols_per_row):
+                    if i + j < len(agents_a):
+                        with cols[j]:
+                            st.markdown(create_compact_agent_card(agents_a[i + j], viewer), unsafe_allow_html=True)
+        else:
+            st.info("暂无A席坐席")
     
-    st.markdown("---")
+    # B席看板
+    with col_b:
+        agents_b = categorized_data.get('B席', [])
+        online_count_b = sum(1 for agent in agents_b if agent['status'] == '搬砖中')
+        total_count_b = len(agents_b)
+        
+        # 席位标题
+        st.markdown(f"""
+        <div style="background-color: #EF949F; border: 2px solid #333; border-radius: 6px; padding: 8px; margin-bottom: 8px; text-align: center;">
+            <h3 style="margin: 0; color: #333;">B席 ({online_count_b}/{total_count_b})</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # 坐席网格
+        if agents_b:
+            # 计算每行显示的坐席数量
+            cols_per_row = 2
+            for i in range(0, len(agents_b), cols_per_row):
+                cols = st.columns(cols_per_row)
+                for j in range(cols_per_row):
+                    if i + j < len(agents_b):
+                        with cols[j]:
+                            st.markdown(create_compact_agent_card(agents_b[i + j], viewer), unsafe_allow_html=True)
+        else:
+            st.info("暂无B席坐席")
     
-    # 分栏显示各类型坐席
-    cols = st.columns(3)
-    for i, (seat, agents) in enumerate(categorized_data.items()):
-        with cols[i]:
-            st.markdown(f"### <span style='background-color:{viewer.seat_colors[seat]}; color:black; padding:4px 8px; border-radius:4px; border: 1px solid #000000;'>{seat}</span>", unsafe_allow_html=True)
-            if agents:
-                for idx, agent in enumerate(agents):
-                    st.markdown(create_agent_card(agent, viewer), unsafe_allow_html=True)
-            else:
-                st.info(f"当前无{seat}坐席值班")
+    # C席看板
+    with col_c:
+        agents_c = categorized_data.get('C席', [])
+        online_count_c = sum(1 for agent in agents_c if agent['status'] == '搬砖中')
+        total_count_c = len(agents_c)
+        
+        # 席位标题
+        st.markdown(f"""
+        <div style="background-color: #FFC000; border: 2px solid #333; border-radius: 6px; padding: 8px; margin-bottom: 8px; text-align: center;">
+            <h3 style="margin: 0; color: #333;">C席 ({online_count_c}/{total_count_c})</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # 坐席网格
+        if agents_c:
+            # 计算每行显示的坐席数量
+            cols_per_row = 2
+            for i in range(0, len(agents_c), cols_per_row):
+                cols = st.columns(cols_per_row)
+                for j in range(cols_per_row):
+                    if i + j < len(agents_c):
+                        with cols[j]:
+                            st.markdown(create_compact_agent_card(agents_c[i + j], viewer), unsafe_allow_html=True)
+        else:
+            st.info("暂无C席坐席")
 
 if __name__ == "__main__":
     main()
