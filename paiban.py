@@ -279,7 +279,8 @@ class AgentViewer:
                         'seat': seat,
                         'status': '',
                         'status_color': '',
-                        'actual_seat': seat  # 新增字段，用于存储实际席位
+                        'actual_seat': seat,  # 新增字段，用于存储实际席位
+                        'date': target_date  # 添加日期信息，用于区分班次
                     }
                     
                     color_data.append(person_info)
@@ -385,6 +386,11 @@ def create_agent_card(person_info, viewer):
     # 显示实际席位
     display_seat = person_info.get('actual_seat', person_info['seat'])
     
+    # 添加日期信息显示（如果是昨日的班次）
+    date_info = ""
+    if hasattr(person_info, 'date') and person_info.get('is_yesterday', False):
+        date_info = f" ({person_info['date'].strftime('%m-%d')})"
+    
     card_html = f"""
     <div style="background-color: {bg_color}; border: 2px solid #000000; border-radius: 8px; padding: 12px; margin: 8px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
         <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -398,7 +404,7 @@ def create_agent_card(person_info, viewer):
                 <p style="margin: 0; font-size: 16px; font-weight: bold; color: {status_color};">{person_info['status']}</p>
             </div>
             <div style="width: 30%; text-align: right;">
-                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">班次: {person_info['shift']}</p>
+                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">班次: {person_info['shift']}{date_info}</p>
                 <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">席位: {display_seat}</p>
             </div>
         </div>
@@ -588,31 +594,100 @@ def main():
     
     current_hour = view_time.hour
     
-    # 修复7-8点时间段M1班次显示问题
-    # 7点之前显示前一天的排班，7点及之后显示当天的排班
-    if current_hour < 7:
+    # 修复7-8点时间段班次显示问题
+    # 在7-8点时间段，需要同时显示昨日的T2班次和今日的早班班次
+    if 7 <= current_hour < 8:
+        # 同时加载昨日和今日的数据
+        yesterday_date = view_date - timedelta(days=1)
+        yesterday_weekday = weekdays[yesterday_date.weekday()]
+        
+        # 使用日期字符串作为缓存键
+        yesterday_key = yesterday_date.strftime('%Y-%m-%d')
+        today_key = view_date.strftime('%Y-%m-%d')
+        
+        # 加载昨日数据
+        if yesterday_key not in st.session_state.schedule_data:
+            with st.spinner(f"正在加载{yesterday_date.strftime('%Y年%m月%d日')}的坐席数据，请稍候..."):
+                st.session_state.schedule_data[yesterday_key] = viewer.load_schedule_with_colors(
+                    st.session_state.file_path, 
+                    yesterday_date
+                )
+        
+        # 加载今日数据
+        if today_key not in st.session_state.schedule_data:
+            with st.spinner(f"正在加载{view_date.strftime('%Y年%m月%d日')}的坐席数据，请稍候..."):
+                st.session_state.schedule_data[today_key] = viewer.load_schedule_with_colors(
+                    st.session_state.file_path, 
+                    view_date
+                )
+        
+        yesterday_df = st.session_state.schedule_data[yesterday_key]
+        today_df = st.session_state.schedule_data[today_key]
+        
+        # 合并数据：只保留昨日的T2班次和今日的非T2班次
+        combined_data = []
+        
+        # 添加昨日的T2班次
+        if yesterday_df is not None and not yesterday_df.empty:
+            for _, person in yesterday_df.iterrows():
+                if 'T2' in str(person['shift']):
+                    person_copy = person.copy()
+                    person_copy['is_yesterday'] = True
+                    person_copy['date'] = yesterday_date
+                    combined_data.append(person_copy)
+        
+        # 添加今日的非T2班次
+        if today_df is not None and not today_df.empty:
+            for _, person in today_df.iterrows():
+                if 'T2' not in str(person['shift']):
+                    person_copy = person.copy()
+                    person_copy['is_yesterday'] = False
+                    person_copy['date'] = view_date
+                    combined_data.append(person_copy)
+        
+        schedule_df = pd.DataFrame(combined_data) if combined_data else pd.DataFrame()
+        
+        st.info(f"当前查看: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')} (显示{yesterday_date.strftime('%m-%d')}的T2班次和{view_date.strftime('%m-%d')}的其他班次)")
+    
+    elif current_hour < 7:
+        # 7点之前显示前一天的排班
         load_date = view_date - timedelta(days=1)
         load_weekday = weekdays[load_date.weekday()]
         st.info(f"当前查看: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')} (显示{load_date.strftime('%Y年%m月%d日')} {load_weekday}的排班数据)")
+        
+        # 使用日期字符串作为缓存键
+        load_date_key = load_date.strftime('%Y-%m-%d')
+        
+        # 加载对应日期的数据
+        if load_date_key not in st.session_state.schedule_data:
+            with st.spinner(f"正在加载{load_date.strftime('%Y年%m月%d日')}的坐席数据，请稍候..."):
+                st.session_state.schedule_data[load_date_key] = viewer.load_schedule_with_colors(
+                    st.session_state.file_path, 
+                    load_date
+                )
+        
+        schedule_df = st.session_state.schedule_data[load_date_key]
+    
     else:
+        # 8点及之后显示当天的排班
         load_date = view_date
         st.info(f"当前查看: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')}")
-    
-    # 使用日期字符串作为缓存键
-    load_date_key = load_date.strftime('%Y-%m-%d')
-    
-    # 加载对应日期的数据
-    if load_date_key not in st.session_state.schedule_data:
-        with st.spinner(f"正在加载{load_date.strftime('%Y年%m月%d日')}的坐席数据，请稍候..."):
-            st.session_state.schedule_data[load_date_key] = viewer.load_schedule_with_colors(
-                st.session_state.file_path, 
-                load_date
-            )
-    
-    schedule_df = st.session_state.schedule_data[load_date_key]
+        
+        # 使用日期字符串作为缓存键
+        load_date_key = load_date.strftime('%Y-%m-%d')
+        
+        # 加载对应日期的数据
+        if load_date_key not in st.session_state.schedule_data:
+            with st.spinner(f"正在加载{load_date.strftime('%Y年%m月%d日')}的坐席数据，请稍候..."):
+                st.session_state.schedule_data[load_date_key] = viewer.load_schedule_with_colors(
+                    st.session_state.file_path, 
+                    load_date
+                )
+        
+        schedule_df = st.session_state.schedule_data[load_date_key]
     
     if schedule_df is None or schedule_df.empty:
-        st.warning(f"{load_date.strftime('%Y年%m月%d日')}未找到有效坐席数据")
+        st.warning(f"未找到有效坐席数据")
         return
     
     # 按A/B/C席分类显示坐席
