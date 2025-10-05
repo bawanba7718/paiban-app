@@ -588,7 +588,9 @@ def main():
     
     current_hour = view_time.hour
     
-    if current_hour < 8:
+    # 修复7-8点时间段M1班次显示问题
+    # 7点之前显示前一天的排班，7点及之后显示当天的排班
+    if current_hour < 7:
         load_date = view_date - timedelta(days=1)
         load_weekday = weekdays[load_date.weekday()]
         st.info(f"当前查看: {view_date.strftime('%Y年%m月%d日')} {weekday} {view_time.strftime('%H:%M')} (显示{load_date.strftime('%Y年%m月%d日')} {load_weekday}的排班数据)")
