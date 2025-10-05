@@ -28,6 +28,7 @@ class AgentViewer:
             '8CDDFA': '休',
             'FFFF00': '休',
             'FFFFFF': 'A席',  # 无颜色/白色为A席
+            'FEE796': 'C席',  # 新增FEE796颜色为C席
         }
         
         # 席位颜色映射
@@ -84,9 +85,10 @@ class AgentViewer:
     def get_work_status(self, shift_code, seat, color_code, check_time=None):
         """
         修复A席M2休息时间判断逻辑，确保13:00-14:00显示"干饭中"
+        新增FEE796颜色T1班次的特殊规则：8:00-17:00为C席，17:00-20:00为A席，休14:00-15:00
         """
         if not shift_code or str(shift_code).strip() == '':
-            return "未排班", "#BFBFBF"
+            return "未排班", "#BFBFBF", seat
             
         shift_code = str(shift_code).strip()
         main_shift = None
@@ -98,7 +100,7 @@ class AgentViewer:
                 break
                 
         if not main_shift:
-            return "未知班次", "#BFBFBF"
+            return "未知班次", "#BFBFBF", seat
             
         # 复制基础班次时间
         shift = self.shift_times[main_shift].copy()
@@ -109,6 +111,18 @@ class AgentViewer:
             # 强制设置休息时间，覆盖任何基础设置
             shift['break_start'] = time(13, 0)
             shift['break_end'] = time(14, 0)
+        
+        # FEE796颜色T1班次特殊规则：8:00-17:00为C席，17:00-20:00为A席，休14:00-15:00
+        elif color_code == 'FEE796' and main_shift == 'T1':
+            shift['break_start'] = time(14, 0)
+            shift['break_end'] = time(15, 0)
+            
+            # 动态调整席位：8:00-17:00为C席，17:00-20:00为A席
+            check_time = check_time or datetime.now(TZ_UTC_8).time()
+            if time(17, 0) <= check_time < time(20, 0):
+                seat = 'A席'  # 17:00-20:00期间视为A席
+            else:
+                seat = 'C席'  # 8:00-17:00期间视为C席
         
         # EF949F T1 B席休14:00-15:00
         elif seat == 'B席' and color_code == 'EF949F' and main_shift == 'T1':
@@ -180,13 +194,13 @@ class AgentViewer:
         
         # 确定最终状态
         if is_on_the_way:
-            return "正在路上", "#BFBFBF"
+            return "正在路上", "#BFBFBF", seat
         elif not in_work_time:
-            return "已回家", "#BFBFBF"
+            return "已回家", "#BFBFBF", seat
         elif in_break_time:
-            return "干饭中", "orange"
+            return "干饭中", "orange", seat
         else:
-            return "搬砖中", "green"
+            return "搬砖中", "green", seat
 
     def get_cell_color(self, cell):
         try:
@@ -264,7 +278,8 @@ class AgentViewer:
                         'color': color_code,
                         'seat': seat,
                         'status': '',
-                        'status_color': ''
+                        'status_color': '',
+                        'actual_seat': seat  # 新增字段，用于存储实际席位
                     }
                     
                     color_data.append(person_info)
@@ -283,7 +298,7 @@ class AgentViewer:
             return result
         
         for _, person in df.iterrows():
-            status, status_color = self.get_work_status(
+            status, status_color, actual_seat = self.get_work_status(
                 person['shift'], 
                 person['seat'], 
                 person['color'],
@@ -291,8 +306,9 @@ class AgentViewer:
             )
             person['status'] = status
             person['status_color'] = status_color
+            person['actual_seat'] = actual_seat  # 存储实际席位（考虑动态变化）
             
-            seat = person['seat']
+            seat = actual_seat  # 使用实际席位进行分类
             if seat in result:
                 result[seat].append(person)
             else:
@@ -363,8 +379,11 @@ def create_agent_card(person_info, viewer):
         bg_color = "#BFBFBF"
     else:
         status_color = person_info['status_color']
-        seat_type = person_info['seat']
+        seat_type = person_info.get('actual_seat', person_info['seat'])  # 优先使用实际席位
         bg_color = f"#{person_info['color']}" if seat_type in ['B席', 'C席'] else "#FFFFFF"
+    
+    # 显示实际席位
+    display_seat = person_info.get('actual_seat', person_info['seat'])
     
     card_html = f"""
     <div style="background-color: {bg_color}; border: 2px solid #000000; border-radius: 8px; padding: 12px; margin: 8px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -380,7 +399,7 @@ def create_agent_card(person_info, viewer):
             </div>
             <div style="width: 30%; text-align: right;">
                 <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">班次: {person_info['shift']}</p>
-                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">席位: {person_info['seat']}</p>
+                <p style="margin: 5px 0; font-size: 14px; font-weight: bold;">席位: {display_seat}</p>
             </div>
         </div>
     </div>
