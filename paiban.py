@@ -1,3 +1,5 @@
+import os
+PORT = os.environ.get('PORT', 8501)
 import pandas as pd
 import datetime
 from datetime import datetime, time, timedelta, timezone
@@ -805,3 +807,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
