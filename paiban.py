@@ -462,8 +462,8 @@ def download_from_jiananguo():
     except Exception as e:
         return False, None, f"下载失败: {str(e)}"
 
-def create_clickable_agent_card(person_info, viewer):
-    """创建可点击的坐席卡片"""
+def create_compact_agent_card(person_info, viewer):
+    """创建紧凑型坐席卡片"""
     status_icon = viewer.status_icons.get(person_info['status'], '❓')
     
     # 状态颜色
@@ -477,12 +477,9 @@ def create_clickable_agent_card(person_info, viewer):
         bg_color = f"#{person_info['color']}" if seat_type in ['B席', 'C席'] else "#FFFFFF"
         border_color = "#333"
     
-    # 添加点击效果和手型光标
+    # 紧凑卡片设计
     card_html = f"""
-    <div style="background-color: {bg_color}; border: 1px solid {border_color}; border-radius: 4px; padding: 6px; margin: 2px; min-height: 60px; display: flex; flex-direction: column; justify-content: center; cursor: pointer; transition: all 0.2s ease;"
-         onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.15)';"
-         onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none';"
-         onclick="handleCardClick('{person_info['id']}', '{person_info['name']}')">
+    <div style="background-color: {bg_color}; border: 1px solid {border_color}; border-radius: 4px; padding: 6px; margin: 2px; min-height: 60px; display: flex; flex-direction: column; justify-content: center;">
         <div style="font-size: 14px; font-weight: bold; text-align: center; margin-bottom: 4px;">{person_info['name']}</div>
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="font-size: 12px; color: #666;">{person_info['workplace']}</div>
@@ -739,27 +736,37 @@ def main():
         show_agent_detail(viewer, st.session_state.detail_agent_id, st.session_state.detail_agent_name)
         return
     
-    # 添加JavaScript处理卡片点击
+    # 添加CSS样式
     st.markdown("""
-    <script>
-    function handleCardClick(agentId, agentName) {
-        // 发送数据到Streamlit
-        window.parent.postMessage({
-            type: 'streamlit:setComponentValue',
-            value: {
-                agent_id: agentId,
-                agent_name: agentName
-            }
-        }, '*');
+    <style>
+    .clickable-card-container {
+        position: relative;
+        width: 100%;
     }
     
-    // 监听来自Streamlit的消息
-    window.addEventListener('message', function(event) {
-        if (event.data.type === 'streamlit:componentValue') {
-            // 处理组件值变化
-        }
-    });
-    </script>
+    .invisible-button {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+        z-index: 1;
+    }
+    
+    .agent-card {
+        position: relative;
+        z-index: 0;
+    }
+    
+    /* 添加悬停效果 */
+    .clickable-card-container:hover .agent-card {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        transform: translateY(-2px);
+        transition: all 0.2s ease;
+    }
+    </style>
     """, unsafe_allow_html=True)
     
     # 主界面 - 简化布局
@@ -921,17 +928,23 @@ def main():
                 for j in range(cols_per_row):
                     if i + j < len(agents_a):
                         with cols[j]:
-                            card_html = create_clickable_agent_card(agents_a[i + j], viewer)
-                            st.markdown(card_html, unsafe_allow_html=True)
+                            # 创建可点击卡片容器
+                            st.markdown('<div class="clickable-card-container">', unsafe_allow_html=True)
                             
-                            # 添加点击处理
-                            if st.button(f"查看 {agents_a[i + j]['name']} 的排班", 
+                            # 显示卡片
+                            card_html = create_compact_agent_card(agents_a[i + j], viewer)
+                            st.markdown(f'<div class="agent-card">{card_html}</div>', unsafe_allow_html=True)
+                            
+                            # 添加透明覆盖按钮
+                            if st.button("", 
                                        key=f"detail_{agents_a[i + j]['id']}_{i + j}",
                                        use_container_width=True):
                                 st.session_state.show_detail = True
                                 st.session_state.detail_agent_id = agents_a[i + j]['id']
                                 st.session_state.detail_agent_name = agents_a[i + j]['name']
                                 st.rerun()
+                            
+                            st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info("暂无A席坐席")
     
@@ -957,17 +970,23 @@ def main():
                 for j in range(cols_per_row):
                     if i + j < len(agents_b):
                         with cols[j]:
-                            card_html = create_clickable_agent_card(agents_b[i + j], viewer)
-                            st.markdown(card_html, unsafe_allow_html=True)
+                            # 创建可点击卡片容器
+                            st.markdown('<div class="clickable-card-container">', unsafe_allow_html=True)
                             
-                            # 添加点击处理
-                            if st.button(f"查看 {agents_b[i + j]['name']} 的排班", 
+                            # 显示卡片
+                            card_html = create_compact_agent_card(agents_b[i + j], viewer)
+                            st.markdown(f'<div class="agent-card">{card_html}</div>', unsafe_allow_html=True)
+                            
+                            # 添加透明覆盖按钮
+                            if st.button("", 
                                        key=f"detail_{agents_b[i + j]['id']}_{i + j}",
                                        use_container_width=True):
                                 st.session_state.show_detail = True
                                 st.session_state.detail_agent_id = agents_b[i + j]['id']
                                 st.session_state.detail_agent_name = agents_b[i + j]['name']
                                 st.rerun()
+                            
+                            st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info("暂无B席坐席")
     
@@ -993,17 +1012,23 @@ def main():
                 for j in range(cols_per_row):
                     if i + j < len(agents_c):
                         with cols[j]:
-                            card_html = create_clickable_agent_card(agents_c[i + j], viewer)
-                            st.markdown(card_html, unsafe_allow_html=True)
+                            # 创建可点击卡片容器
+                            st.markdown('<div class="clickable-card-container">', unsafe_allow_html=True)
                             
-                            # 添加点击处理
-                            if st.button(f"查看 {agents_c[i + j]['name']} 的排班", 
+                            # 显示卡片
+                            card_html = create_compact_agent_card(agents_c[i + j], viewer)
+                            st.markdown(f'<div class="agent-card">{card_html}</div>', unsafe_allow_html=True)
+                            
+                            # 添加透明覆盖按钮
+                            if st.button("", 
                                        key=f"detail_{agents_c[i + j]['id']}_{i + j}",
                                        use_container_width=True):
                                 st.session_state.show_detail = True
                                 st.session_state.detail_agent_id = agents_c[i + j]['id']
                                 st.session_state.detail_agent_name = agents_c[i + j]['name']
                                 st.rerun()
+                            
+                            st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.info("暂无C席坐席")
 
