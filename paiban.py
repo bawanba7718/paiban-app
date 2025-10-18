@@ -459,6 +459,11 @@ def download_from_jiananguo():
 
 def create_compact_agent_card(person_info, viewer):
     """创建紧凑型坐席卡片，姓名可点击"""
+    # 确保姓名是字符串类型
+    name = person_info.get('name', '未知姓名')
+    if not isinstance(name, str):
+        name = str(name)
+    
     status_icon = viewer.status_icons.get(person_info['status'], '❓')
     
     # 状态颜色
@@ -475,12 +480,25 @@ def create_compact_agent_card(person_info, viewer):
     # 创建姓名点击事件的唯一键
     name_key = f"name_{person_info['name']}_{person_info['id']}"
     
+    # 创建隐藏按钮（使用Streamlit的空容器实现隐藏效果）
+    with st.empty():
+        # 不使用style参数，而是通过将按钮放在空容器中并立即覆盖来隐藏
+        hidden_button = st.button(
+            label=name,
+            key=name_key,
+            on_click=lambda: st.session_state.update({
+                'view_mode': 'personal',
+                'selected_person': person_info['name']
+            }),
+            use_container_width=True
+        )
+    
     # 紧凑卡片设计，姓名可点击
     card_html = f"""
     <div style="background-color: {bg_color}; border: 1px solid {border_color}; border-radius: 4px; padding: 6px; margin: 2px; min-height: 60px; display: flex; flex-direction: column; justify-content: center;">
         <div style="font-size: 14px; font-weight: bold; text-align: center; margin-bottom: 4px;">
             <a href="javascript:window.parent.document.getElementById('{name_key}').click();" style="color: #0066CC; text-decoration: underline; cursor: pointer;">
-                {person_info['name']}
+                {name}
             </a>
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -493,17 +511,6 @@ def create_compact_agent_card(person_info, viewer):
         </div>
     </div>
     """
-    
-    # 隐藏的按钮用于触发Streamlit事件
-    hidden_button = st.button(
-        label=person_info['name'],
-        key=name_key,
-        on_click=lambda: st.session_state.update({
-            'view_mode': 'personal',
-            'selected_person': person_info['name']
-        }),
-        style={'display': 'none'}
-    )
     
     return card_html
 
