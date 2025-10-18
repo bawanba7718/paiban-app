@@ -435,8 +435,8 @@ def download_from_jiananguo():
     except Exception as e:
         return False, None, f"下载失败: {str(e)}"
 
-def create_compact_agent_card(person_info, viewer, col):
-    """创建紧凑型坐席卡片"""
+def create_compact_agent_card(person_info, viewer):
+    """创建紧凑型坐席卡片 - 保持原有样式完全不变"""
     status_icon = viewer.status_icons.get(person_info['status'], '❓')
     
     # 状态颜色
@@ -450,69 +450,112 @@ def create_compact_agent_card(person_info, viewer, col):
         bg_color = f"#{person_info['color']}" if seat_type in ['B席', 'C席'] else "#FFFFFF"
         border_color = "#333"
     
-    with col:
-        # 使用容器创建卡片
-        with st.container():
-            # 姓名按钮
-            if st.button(
-                person_info['name'],
-                key=f"name_btn_{person_info['name']}_{person_info['workplace']}",
-                use_container_width=True,
-                type="secondary"
-            ):
-                st.session_state.selected_agent = person_info['name']
-                st.session_state.show_monthly_schedule = True
-                st.rerun()
-            
-            # 其他信息
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.caption(person_info['workplace'])
-            with col2:
-                st.write(status_icon)
-            
-            col3, col4 = st.columns([1, 1])
-            with col3:
-                st.markdown(f"**{person_info['shift']}**")
-            with col4:
-                st.markdown(f"<span style='color: {status_color}; font-weight: bold;'>{person_info['status']}</span>", unsafe_allow_html=True)
+    # 使用可点击的姓名链接，保持原有样式
+    name_html = f"""
+    <a href="#" onclick="parent.postMessage({{'type': 'streamlit:setComponentValue', 'value': '{person_info['name']}'}}, '*'); return false;" 
+       style="color: #333; font-weight: bold; font-size: 14px; text-decoration: none; cursor: pointer;">
+        {person_info['name']}
+    </a>
+    """
+    
+    # 保持原有卡片样式完全不变
+    card_html = f"""
+    <div style="background-color: {bg_color}; border: 1px solid {border_color}; border-radius: 4px; padding: 6px; margin: 2px; min-height: 60px; display: flex; flex-direction: column; justify-content: center;">
+        <div style="font-size: 14px; font-weight: bold; text-align: center; margin-bottom: 4px;">{name_html}</div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 12px; color: #666;">{person_info['workplace']}</div>
+            <div style="font-size: 16px;">{status_icon}</div>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
+            <div style="font-size: 11px; font-weight: bold;">{person_info['shift']}</div>
+            <div style="font-size: 11px; color: {status_color}; font-weight: bold;">{person_info['status']}</div>
+        </div>
+    </div>
+    """
+    
+    return card_html
 
-def show_monthly_schedule_dialog(agent_name, monthly_data, viewer):
-    """显示当月排班的对话框"""
-    st.markdown("---")
-    st.markdown(f"### 📅 {agent_name} - 本月排班详情")
+def show_monthly_schedule_modal(agent_name, monthly_data, viewer):
+    """显示当月排班的模态框"""
+    # 创建模态框背景
+    st.markdown("""
+    <style>
+    .modal-background {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+    }
+    .modal-content {
+        background: white;
+        padding: 20px;
+        border-radius: 10px;
+        max-width: 90%;
+        max-height: 90%;
+        overflow-y: auto;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # 模态框内容
+    modal_html = f"""
+    <div class="modal-background">
+        <div class="modal-content">
+            <h2>📅 {agent_name} - 本月排班详情</h2>
+    """
     
     if not monthly_data:
-        st.warning(f"未找到 {agent_name} 本月的排班数据")
-        if st.button("返回", use_container_width=True):
-            st.session_state.show_monthly_schedule = False
-            st.rerun()
-        return
-    
-    # 显示排班统计
-    total_days = len(monthly_data)
-    st.info(f"本月共有 {total_days} 天排班")
-    
-    # 显示排班表格
-    for i, day_schedule in enumerate(monthly_data):
-        col1, col2, col3 = st.columns([2, 1, 1])
+        modal_html += f"<p>未找到 {agent_name} 本月的排班数据</p>"
+    else:
+        modal_html += f"<p>本月共有 {len(monthly_data)} 天排班</p>"
+        modal_html += """
+        <div style="max-height: 400px; overflow-y: auto;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="background-color: #f0f0f0;">
+                        <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">日期</th>
+                        <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">班次</th>
+                        <th style="padding: 8px; border: 1px solid #ddd; text-align: left;">席位</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
         
-        with col1:
-            st.write(f"{day_schedule['date'].strftime('%m月%d日')} ({['一','二','三','四','五','六','日'][day_schedule['date'].weekday()]})")
+        for day_schedule in monthly_data:
+            color_style = f"background-color: #{day_schedule['color']};"
+            modal_html += f"""
+                <tr>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{day_schedule['date'].strftime('%m月%d日')} ({['一','二','三','四','五','六','日'][day_schedule['date'].weekday()]})</td>
+                    <td style="padding: 8px; border: 1px solid #ddd; {color_style}"><strong>{day_schedule['shift']}</strong></td>
+                    <td style="padding: 8px; border: 1px solid #ddd;">{day_schedule['seat']}</td>
+                </tr>
+            """
         
-        with col2:
-            # 根据颜色显示不同的背景
-            color_style = f"background-color: #{day_schedule['color']}; padding: 5px; border-radius: 3px; text-align: center; border: 1px solid #ccc;"
-            st.markdown(f'<div style="{color_style}"><strong>{day_schedule["shift"]}</strong></div>', unsafe_allow_html=True)
-        
-        with col3:
-            st.write(day_schedule['seat'])
+        modal_html += """
+                </tbody>
+            </table>
+        </div>
+        """
     
-    # 关闭按钮
-    st.markdown("---")
-    if st.button("返回主界面", use_container_width=True, type="primary"):
-        st.session_state.show_monthly_schedule = False
-        st.rerun()
+    modal_html += """
+            <div style="margin-top: 20px; text-align: center;">
+                <button onclick="parent.postMessage({'type': 'streamlit:setComponentValue', 'value': 'close_modal'}, '*');" 
+                        style="padding: 8px 16px; background-color: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    关闭
+                </button>
+            </div>
+        </div>
+    </div>
+    """
+    
+    st.markdown(modal_html, unsafe_allow_html=True)
 
 def update_current_time():
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
@@ -576,19 +619,47 @@ def main():
     if 'selected_agent' not in st.session_state:
         st.session_state.selected_agent = ""
     
+    # 添加自定义CSS来确保链接样式正确
+    st.markdown("""
+    <style>
+    a[name-click] {
+        color: #333 !important;
+        font-weight: bold !important;
+        text-decoration: none !important;
+        cursor: pointer !important;
+    }
+    a[name-click]:hover {
+        text-decoration: underline !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # 监听来自JavaScript的消息
+    if 'component_value' not in st.session_state:
+        st.session_state.component_value = ""
+    
+    # 创建隐藏的组件来接收JavaScript消息
+    component_value = st.text_input(
+        "隐藏的组件",
+        value=st.session_state.get('component_value', ''),
+        key="hidden_component",
+        label_visibility="collapsed"
+    )
+    
+    # 处理组件值变化
+    if component_value and component_value != st.session_state.get('last_component_value', ''):
+        if component_value == 'close_modal':
+            st.session_state.show_monthly_schedule = False
+            st.session_state.selected_agent = ""
+        else:
+            st.session_state.selected_agent = component_value
+            st.session_state.show_monthly_schedule = True
+        
+        st.session_state.last_component_value = component_value
+        st.rerun()
+    
     # 初始化查看器
     viewer = AgentViewer()
-    
-    # 检查是否显示当月排班
-    if st.session_state.get('show_monthly_schedule', False) and st.session_state.selected_agent:
-        # 显示当月排班对话框
-        monthly_data = viewer.load_monthly_schedule(
-            st.session_state.file_path,
-            st.session_state.selected_agent,
-            datetime.now(TZ_UTC_8)
-        )
-        show_monthly_schedule_dialog(st.session_state.selected_agent, monthly_data, viewer)
-        return
     
     # 首次运行或文件不存在时下载排班文件
     if st.session_state.file_path is None or not os.path.exists(st.session_state.file_path):
@@ -601,7 +672,16 @@ def main():
                 st.error(f"加载失败: {download_message}")
                 st.stop()
     
-    # 主界面
+    # 检查是否显示当月排班模态框
+    if st.session_state.get('show_monthly_schedule', False) and st.session_state.selected_agent:
+        monthly_data = viewer.load_monthly_schedule(
+            st.session_state.file_path,
+            st.session_state.selected_agent,
+            datetime.now(TZ_UTC_8)
+        )
+        show_monthly_schedule_modal(st.session_state.selected_agent, monthly_data, viewer)
+    
+    # 主界面 - 保持完全不变
     col_logo, col_title = st.columns([1, 4])
     
     with col_logo:
@@ -618,7 +698,7 @@ def main():
     with col_title:
         st.title("综合组在线坐席")
     
-    # 控制栏
+    # 控制栏 - 保持完全不变
     col_controls = st.columns([2, 1, 1, 1])
     
     with col_controls[0]:
@@ -684,7 +764,7 @@ def main():
     
     st.markdown("---")
     
-    # 显示当前查看时间
+    # 显示当前查看时间 - 保持完全不变
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
     weekday = weekdays[view_date.weekday()]
     
@@ -732,13 +812,13 @@ def main():
     # 按A/B/C席分类显示坐席
     categorized_data = viewer.categorize_by_seat(schedule_df, view_time)
     
-    # 看板式布局 - 三列并排
+    # 看板式布局 - 三列并排 - 保持完全不变
     st.subheader(f"{view_date.strftime('%Y年%m月%d日')} {weekday} 坐席看板")
     
     # 创建三列
     col_a, col_b, col_c = st.columns(3)
     
-    # A席看板
+    # A席看板 - 保持完全不变
     with col_a:
         agents_a = categorized_data.get('A席', [])
         online_count_a = sum(1 for agent in agents_a if agent['status'] == '搬砖中')
@@ -759,11 +839,12 @@ def main():
                 cols = st.columns(cols_per_row)
                 for j in range(cols_per_row):
                     if i + j < len(agents_a):
-                        create_compact_agent_card(agents_a[i + j], viewer, cols[j])
+                        with cols[j]:
+                            st.markdown(create_compact_agent_card(agents_a[i + j], viewer), unsafe_allow_html=True)
         else:
             st.info("暂无A席坐席")
     
-    # B席看板
+    # B席看板 - 保持完全不变
     with col_b:
         agents_b = categorized_data.get('B席', [])
         online_count_b = sum(1 for agent in agents_b if agent['status'] == '搬砖中')
@@ -784,11 +865,12 @@ def main():
                 cols = st.columns(cols_per_row)
                 for j in range(cols_per_row):
                     if i + j < len(agents_b):
-                        create_compact_agent_card(agents_b[i + j], viewer, cols[j])
+                        with cols[j]:
+                            st.markdown(create_compact_agent_card(agents_b[i + j], viewer), unsafe_allow_html=True)
         else:
             st.info("暂无B席坐席")
     
-    # C席看板
+    # C席看板 - 保持完全不变
     with col_c:
         agents_c = categorized_data.get('C席', [])
         online_count_c = sum(1 for agent in agents_c if agent['status'] == '搬砖中')
@@ -809,7 +891,8 @@ def main():
                 cols = st.columns(cols_per_row)
                 for j in range(cols_per_row):
                     if i + j < len(agents_c):
-                        create_compact_agent_card(agents_c[i + j], viewer, cols[j])
+                        with cols[j]:
+                            st.markdown(create_compact_agent_card(agents_c[i + j], viewer), unsafe_allow_html=True)
         else:
             st.info("暂无C席坐席")
 
