@@ -10,6 +10,8 @@ import tempfile
 from webdav3.client import Client
 import threading
 import html
+import calendar
+from datetime import date
 
 # 定义东八区时区（UTC+8）
 TZ_UTC_8 = timezone(timedelta(hours=8))
@@ -287,6 +289,100 @@ class AgentViewer:
             st.error(f"加载数据失败: {str(e)}")
             return None
     
+    def load_agent_month_schedule(self, file_path, agent_id, year, month):
+        """加载指定人员当月的排班数据"""
+        try:
+            if not os.path.exists(file_path):
+                st.error(f"文件不存在: {file_path}")
+                return None
+                
+            wb = load_workbook(file_path, data_only=True)
+            if '全部排班' not in wb.sheetnames:
+                st.error("工作表 '全部排班' 不存在")
+                return None
+            
+            main_sheet = wb['全部排班']
+            df_main = pd.read_excel(file_path, sheet_name='全部排班')
+            
+            # 查找指定人员
+            agent_row = None
+            for row_idx, row in enumerate(main_sheet.iter_rows(min_row=2, values_only=False), start=2):
+                try:
+                    if len(row) < 4:
+                        continue
+                        
+                    current_id = str(row[2].value).strip() if row[2].value else ''
+                    if current_id == agent_id:
+                        agent_row = row
+                        break
+                except:
+                    continue
+            
+            if not agent_row:
+                st.error(f"未找到工号为 {agent_id} 的人员")
+                return None
+            
+            # 获取人员基本信息
+            agent_info = {
+                'name': str(agent_row[3].value).strip() if agent_row[3].value else '',
+                'id': agent_id,
+                'workplace': str(agent_row[0].value).strip() if agent_row[0].value else '',
+            }
+            
+            # 获取当月所有日期的排班
+            month_schedule = []
+            
+            # 遍历所有列，查找日期列
+            for col_idx, col in enumerate(df_main.columns):
+                col_str = str(col)
+                try:
+                    # 尝试解析日期
+                    col_date = None
+                    if '-' in col_str:
+                        parts = col_str.split('-')
+                        if len(parts) >= 2:
+                            month_part = parts[-2] if len(parts) > 2 else parts[0]
+                            day_part = parts[-1]
+                            if month_part.isdigit() and day_part.isdigit():
+                                col_date = date(year, int(month_part), int(day_part))
+                    elif '/' in col_str:
+                        parts = col_str.split('/')
+                        if len(parts) >= 2:
+                            month_part = parts[-2] if len(parts) > 2 else parts[0]
+                            day_part = parts[-1]
+                            if month_part.isdigit() and day_part.isdigit():
+                                col_date = date(year, int(month_part), int(day_part))
+                    
+                    # 如果是目标月份的日期
+                    if col_date and col_date.year == year and col_date.month == month:
+                        if col_idx < len(agent_row):
+                            shift_cell = agent_row[col_idx]
+                            shift_code = str(shift_cell.value).strip() if shift_cell.value else ""
+                            color_code = self.get_cell_color(shift_cell)
+                            
+                            if shift_code and shift_code.strip() not in ['', '休', '休息']:
+                                seat = self.color_roles.get(color_code, 'A席')
+                                
+                                day_schedule = {
+                                    'date': col_date,
+                                    'shift': shift_code,
+                                    'color': color_code,
+                                    'seat': seat,
+                                    'weekday': col_date.strftime('%A')
+                                }
+                                month_schedule.append(day_schedule)
+                except:
+                    continue
+            
+            return {
+                'agent_info': agent_info,
+                'month_schedule': sorted(month_schedule, key=lambda x: x['date'])
+            }
+            
+        except Exception as e:
+            st.error(f"加载月度排班失败: {str(e)}")
+            return None
+    
     def categorize_by_seat(self, df, check_time=None):
         result = {'A席': [], 'B席': [], 'C席': []}
         if df is None or df.empty:
@@ -338,82 +434,6 @@ class AgentViewer:
                 return self.shift_times[s]['start']
         
         return time(23, 59, 59)
-    
-    def get_agent_monthly_schedule(self, file_path, agent_name, target_month):
-        """获取指定员工当月的排班数据"""
-        try:
-            if not os.path.exists(file_path):
-                return None, "文件不存在"
-                
-            wb = load_workbook(file_path, data_only=True)
-            if '全部排班' not in wb.sheetnames:
-                return None, "工作表 '全部排班' 不存在"
-            
-            main_sheet = wb['全部排班']
-            df_main = pd.read_excel(file_path, sheet_name='全部排班')
-            
-            # 找到姓名所在行
-            name_row = None
-            for row_idx, row in enumerate(main_sheet.iter_rows(min_row=2, values_only=False), start=2):
-                if len(row) >= 4 and row[3].value and str(row[3].value).strip() == agent_name:
-                    name_row = row
-                    break
-                    
-            if not name_row:
-                return None, f"未找到 {agent_name} 的排班数据"
-            
-            # 找到当月所有日期列
-            month_str = target_month.strftime('%Y-%m')
-            date_columns = []
-            
-            for col_idx, col in enumerate(df_main.columns):
-                col_str = str(col)
-                if (month_str in col_str or 
-                    target_month.strftime('%m-%d') in col_str or
-                    target_month.strftime('%Y/%m') in col_str or
-                    target_month.strftime('%m/') in col_str):
-                    # 解析日期
-                    try:
-                        # 尝试多种日期格式解析
-                        for fmt in ['%Y-%m-%d', '%m-%d', '%Y/%m/%d', '%m/%d']:
-                            try:
-                                date_obj = datetime.strptime(col_str, fmt).date()
-                                if date_obj.month == target_month.month:
-                                    date_columns.append({
-                                        'date': date_obj,
-                                        'col_idx': col_idx
-                                    })
-                                    break
-                            except ValueError:
-                                continue
-                    except:
-                        continue
-            
-            # 按日期排序
-            date_columns.sort(key=lambda x: x['date'])
-            
-            # 提取排班数据
-            schedule_data = []
-            for col_info in date_columns:
-                col_idx = col_info['col_idx']
-                if len(name_row) > col_idx:
-                    shift_cell = name_row[col_idx]
-                    shift_code = str(shift_cell.value).strip() if shift_cell.value else ""
-                    color_code = self.get_cell_color(shift_cell)
-                    seat = self.color_roles.get(color_code, 'A席')
-                    
-                    schedule_data.append({
-                        'date': col_info['date'],
-                        'weekday': ["一", "二", "三", "四", "五", "六", "日"][col_info['date'].weekday()],
-                        'shift': shift_code,
-                        'seat': seat,
-                        'color': color_code
-                    })
-            
-            return schedule_data, ""
-            
-        except Exception as e:
-            return None, f"获取月度排班失败: {str(e)}"
 
 def download_from_jiananguo():
     try:
@@ -442,8 +462,8 @@ def download_from_jiananguo():
     except Exception as e:
         return False, None, f"下载失败: {str(e)}"
 
-def create_compact_agent_card(person_info, viewer, key):
-    """创建可点击的紧凑型坐席卡片"""
+def create_compact_agent_card(person_info, viewer):
+    """创建紧凑型坐席卡片"""
     status_icon = viewer.status_icons.get(person_info['status'], '❓')
     
     # 状态颜色
@@ -457,32 +477,9 @@ def create_compact_agent_card(person_info, viewer, key):
         bg_color = f"#{person_info['color']}" if seat_type in ['B席', 'C席'] else "#FFFFFF"
         border_color = "#333"
     
-    # 使用Streamlit的按钮作为可点击容器
-    if st.button(
-        label=f"{person_info['name']}_card",
-        key=key,
-        use_container_width=True,
-        help=f"点击查看{person_info['name']}的当月班表"
-    ):
-        # 存储当前点击的员工信息到session_state
-        st.session_state.selected_agent = person_info
-        st.session_state.show_schedule_modal = True
-    
-    # 卡片样式 (通过markdown覆盖按钮样式)
-    st.markdown(f"""
-    <style>
-    div[data-testid="stButton"] > button[data-testid="baseButton-secondary"] {{
-        background-color: {bg_color};
-        border: 1px solid {border_color};
-        border-radius: 4px;
-        padding: 6px;
-        margin: 2px;
-        min-height: 60px;
-        width: 100%;
-        text-align: left;
-    }}
-    </style>
-    <div style="padding: 6px; margin: -18px 0px;">
+    # 紧凑卡片设计
+    card_html = f"""
+    <div style="background-color: {bg_color}; border: 1px solid {border_color}; border-radius: 4px; padding: 6px; margin: 2px; min-height: 60px; display: flex; flex-direction: column; justify-content: center;">
         <div style="font-size: 14px; font-weight: bold; text-align: center; margin-bottom: 4px;">{person_info['name']}</div>
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="font-size: 12px; color: #666;">{person_info['workplace']}</div>
@@ -493,7 +490,47 @@ def create_compact_agent_card(person_info, viewer, key):
             <div style="font-size: 11px; color: {status_color}; font-weight: bold;">{person_info['status']}</div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+    """
+    
+    return card_html
+
+def create_month_schedule_card(day_schedule):
+    """创建月度排班卡片"""
+    date_str = day_schedule['date'].strftime('%m-%d')
+    weekday_cn = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][day_schedule['date'].weekday()]
+    
+    # 判断是否是今天
+    today = datetime.now(TZ_UTC_8).date()
+    is_today = day_schedule['date'] == today
+    
+    # 基础样式
+    card_style = "border: 1px solid #ccc; border-radius: 4px; padding: 8px; margin: 4px;"
+    
+    if is_today:
+        card_style += "background-color: #fffacd; font-weight: bold;"
+    elif day_schedule['date'].weekday() >= 5:  # 周末
+        card_style += "background-color: #f0f8ff;"
+    else:
+        card_style += "background-color: white;"
+    
+    # 席位颜色
+    seat_type = day_schedule['seat']
+    bg_color = f"#{day_schedule['color']}" if seat_type in ['B席', 'C席'] else "#FFFFFF"
+    
+    card_html = f"""
+    <div style="{card_style}">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <div style="font-size: 12px; font-weight: bold;">{date_str}</div>
+            <div style="font-size: 10px; color: #666;">{weekday_cn}</div>
+        </div>
+        <div style="background-color: {bg_color}; padding: 4px; border-radius: 3px; text-align: center;">
+            <div style="font-size: 14px; font-weight: bold;">{day_schedule['shift']}</div>
+            <div style="font-size: 10px;">{day_schedule['seat']}</div>
+        </div>
+    </div>
+    """
+    
+    return card_html
 
 def update_current_time():
     weekdays = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
@@ -534,18 +571,147 @@ def filter_data_by_name(df, name_query):
         return df
     return df[df['name'].str.contains(name_query, case=False, na=False)]
 
+def show_agent_schedule_page(viewer, agent_info):
+    """显示坐席排班详情页面"""
+    st.set_page_config(
+        page_title=f"{agent_info['name']}的排班",
+        layout="wide",
+        page_icon="📅"
+    )
+    
+    # 返回按钮
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("← 返回主页", use_container_width=True):
+            # 清除页面状态，返回主页
+            if 'page' in st.session_state:
+                del st.session_state.page
+            if 'selected_agent' in st.session_state:
+                del st.session_state.selected_agent
+            st.rerun()
+    
+    with col2:
+        st.title(f"📅 {agent_info['name']} 的月度排班")
+    
+    st.markdown("---")
+    
+    # 显示人员基本信息
+    col_info1, col_info2, col_info3 = st.columns(3)
+    with col_info1:
+        st.metric("姓名", agent_info['name'])
+    with col_info2:
+        st.metric("工号", agent_info['id'])
+    with col_info3:
+        st.metric("职场", agent_info['workplace'])
+    
+    st.markdown("---")
+    
+    # 月份选择
+    current_date = datetime.now(TZ_UTC_8)
+    selected_month = st.selectbox(
+        "选择月份",
+        options=[
+            (current_date.year, current_date.month),
+            (current_date.year, current_date.month - 1) if current_date.month > 1 else (current_date.year - 1, 12),
+            (current_date.year, current_date.month + 1) if current_date.month < 12 else (current_date.year + 1, 1)
+        ],
+        format_func=lambda x: f"{x[0]}年{x[1]}月",
+        index=0,
+        key="month_selector"
+    )
+    
+    year, month = selected_month
+    
+    # 加载月度排班数据
+    with st.spinner(f"正在加载 {year}年{month}月 的排班数据..."):
+        month_schedule_data = viewer.load_agent_month_schedule(
+            st.session_state.file_path, 
+            agent_info['id'], 
+            year, 
+            month
+        )
+    
+    if month_schedule_data and month_schedule_data['month_schedule']:
+        schedule = month_schedule_data['month_schedule']
+        
+        # 显示排班统计
+        st.subheader("📊 排班统计")
+        shift_counts = {}
+        for item in schedule:
+            shift = item['shift']
+            shift_counts[shift] = shift_counts.get(shift, 0) + 1
+        
+        col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+        with col_stat1:
+            st.metric("总排班天数", len(schedule))
+        with col_stat2:
+            st.metric("不同班次数", len(shift_counts))
+        with col_stat3:
+            # 计算休息日
+            rest_days = sum(1 for item in schedule if item['shift'] in ['休', '休息'])
+            st.metric("休息日", rest_days)
+        with col_stat4:
+            # 计算工作日
+            work_days = len(schedule) - rest_days
+            st.metric("工作日", work_days)
+        
+        st.markdown("---")
+        
+        # 显示班次分布
+        st.subheader("📈 班次分布")
+        for shift, count in shift_counts.items():
+            col_dist1, col_dist2 = st.columns([1, 4])
+            with col_dist1:
+                st.write(f"**{shift}**: {count}天")
+            with col_dist2:
+                percentage = (count / len(schedule)) * 100
+                st.progress(percentage / 100, text=f"{percentage:.1f}%")
+        
+        st.markdown("---")
+        
+        # 显示排班卡片
+        st.subheader(f"🗓️ {year}年{month}月 排班详情")
+        
+        # 按周分组显示排班卡片
+        weeks = {}
+        for day_schedule in schedule:
+            week_num = day_schedule['date'].isocalendar()[1]
+            if week_num not in weeks:
+                weeks[week_num] = []
+            weeks[week_num].append(day_schedule)
+        
+        # 按周数排序
+        for week_num in sorted(weeks.keys()):
+            st.write(f"**第{week_num}周**")
+            
+            # 每周显示一行，每行最多7个卡片
+            week_days = weeks[week_num]
+            cols = st.columns(7)
+            
+            for i, day_schedule in enumerate(week_days):
+                if i < 7:  # 确保不超过7天
+                    with cols[i]:
+                        card_html = create_month_schedule_card(day_schedule)
+                        st.markdown(card_html, unsafe_allow_html=True)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+    else:
+        st.warning(f"未找到 {agent_info['name']} 在 {year}年{month}月 的排班数据")
+
 def main():
+    # 检查是否在排班详情页面
+    if 'page' in st.session_state and st.session_state.page == 'agent_schedule' and 'selected_agent' in st.session_state:
+        show_agent_schedule_page(AgentViewer(), st.session_state.selected_agent)
+        return
+    
+    # 主页面设置
     st.set_page_config(
         page_title="综合组在线坐席", 
         layout="wide",
         page_icon="📊"
     )
     
-    # 初始化session_state变量
-    if 'selected_agent' not in st.session_state:
-        st.session_state.selected_agent = None
-    if 'show_schedule_modal' not in st.session_state:
-        st.session_state.show_schedule_modal = False
+    # 简化session state管理
     if 'file_path' not in st.session_state:
         st.session_state.file_path = None
     if 'last_download' not in st.session_state:
@@ -708,7 +874,7 @@ def main():
     # 创建三列
     col_a, col_b, col_c = st.columns(3)
     
-    # A席看板 - 修复网格布局
+    # A席看板
     with col_a:
         agents_a = categorized_data.get('A席', [])
         online_count_a = sum(1 for agent in agents_a if agent['status'] == '搬砖中')
@@ -730,15 +896,20 @@ def main():
                 for j in range(cols_per_row):
                     if i + j < len(agents_a):
                         with cols[j]:
-                            create_compact_agent_card(
-                                agents_a[i + j], 
-                                viewer, 
-                                key=f"a_agent_{i+j}_{st.session_state.refresh_counter}"
-                            )
+                            card_html = create_compact_agent_card(agents_a[i + j], viewer)
+                            st.markdown(card_html, unsafe_allow_html=True)
+                            
+                            # 添加点击处理 - 跳转到排班详情页面
+                            if st.button(f"查看排班", 
+                                       key=f"detail_{agents_a[i + j]['id']}_{i + j}",
+                                       use_container_width=True):
+                                st.session_state.page = 'agent_schedule'
+                                st.session_state.selected_agent = agents_a[i + j]
+                                st.rerun()
         else:
             st.info("暂无A席坐席")
     
-    # B席看板 - 修复网格布局
+    # B席看板
     with col_b:
         agents_b = categorized_data.get('B席', [])
         online_count_b = sum(1 for agent in agents_b if agent['status'] == '搬砖中')
@@ -760,15 +931,20 @@ def main():
                 for j in range(cols_per_row):
                     if i + j < len(agents_b):
                         with cols[j]:
-                            create_compact_agent_card(
-                                agents_b[i + j], 
-                                viewer, 
-                                key=f"b_agent_{i+j}_{st.session_state.refresh_counter}"
-                            )
+                            card_html = create_compact_agent_card(agents_b[i + j], viewer)
+                            st.markdown(card_html, unsafe_allow_html=True)
+                            
+                            # 添加点击处理 - 跳转到排班详情页面
+                            if st.button(f"查看排班", 
+                                       key=f"detail_{agents_b[i + j]['id']}_{i + j}",
+                                       use_container_width=True):
+                                st.session_state.page = 'agent_schedule'
+                                st.session_state.selected_agent = agents_b[i + j]
+                                st.rerun()
         else:
             st.info("暂无B席坐席")
     
-    # C席看板 - 修复网格布局
+    # C席看板
     with col_c:
         agents_c = categorized_data.get('C席', [])
         online_count_c = sum(1 for agent in agents_c if agent['status'] == '搬砖中')
@@ -790,73 +966,18 @@ def main():
                 for j in range(cols_per_row):
                     if i + j < len(agents_c):
                         with cols[j]:
-                            create_compact_agent_card(
-                                agents_c[i + j], 
-                                viewer, 
-                                key=f"c_agent_{i+j}_{st.session_state.refresh_counter}"
-                            )
+                            card_html = create_compact_agent_card(agents_c[i + j], viewer)
+                            st.markdown(card_html, unsafe_allow_html=True)
+                            
+                            # 添加点击处理 - 跳转到排班详情页面
+                            if st.button(f"查看排班", 
+                                       key=f"detail_{agents_c[i + j]['id']}_{i + j}",
+                                       use_container_width=True):
+                                st.session_state.page = 'agent_schedule'
+                                st.session_state.selected_agent = agents_c[i + j]
+                                st.rerun()
         else:
             st.info("暂无C席坐席")
-    
-    # 显示月度班表弹窗
-    if st.session_state.get('show_schedule_modal', False) and 'selected_agent' in st.session_state:
-        agent_info = st.session_state.selected_agent
-        with st.modal(f"{agent_info['name']} 的月度班表", key="schedule_modal"):
-            # 获取当前月份
-            current_month = datetime.now(TZ_UTC_8).replace(day=1)
-            
-            # 加载月度排班数据
-            with st.spinner(f"正在加载{agent_info['name']}的月度班表..."):
-                schedule_data, error_msg = viewer.get_agent_monthly_schedule(
-                    st.session_state.file_path,
-                    agent_info['name'],
-                    current_month
-                )
-            
-            if error_msg:
-                st.error(error_msg)
-            elif not schedule_data:
-                st.info("未找到当月排班数据")
-            else:
-                # 显示月度班表
-                st.subheader(f"{current_month.strftime('%Y年%m月')} 班表")
-                
-                # 创建日历式布局
-                cols = st.columns(7)  # 一周7天
-                weekdays = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
-                
-                # 显示星期标题
-                for i, day in enumerate(weekdays):
-                    cols[i].markdown(f"**{day}**")
-                
-                # 填充日期数据
-                current_weekday = 0
-                for item in schedule_data:
-                    # 计算当前日期应该放在哪一列
-                    col_idx = item['date'].weekday()
-                    
-                    # 如果不是第一周且是新的一周开始，换行
-                    if current_weekday > col_idx and current_weekday != 0:
-                        cols = st.columns(7)
-                    
-                    # 显示日期和班次
-                    with cols[col_idx]:
-                        # 日期样式
-                        date_style = "background-color: #f0f2f6; padding: 2px 5px; border-radius: 3px;"
-                        # 班次样式
-                        shift_style = f"background-color: #{item['color']}; padding: 2px 5px; border-radius: 3px; font-size: 12px;"
-                        
-                        st.markdown(f"""
-                        <div style="{date_style}">{item['date'].day}日</div>
-                        <div style="{shift_style}">{item['shift']}</div>
-                        <div style="font-size: 11px; color: #666;">{item['seat']}</div>
-                        """, unsafe_allow_html=True)
-                    
-                    current_weekday = col_idx
-            
-            # 关闭弹窗按钮
-            if st.button("关闭", use_container_width=True):
-                st.session_state.show_schedule_modal = False
 
 if __name__ == "__main__":
     main()
