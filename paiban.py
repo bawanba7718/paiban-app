@@ -462,8 +462,8 @@ def download_from_jiananguo():
     except Exception as e:
         return False, None, f"下载失败: {str(e)}"
 
-def create_compact_agent_card(person_info, viewer):
-    """创建紧凑型坐席卡片"""
+def create_clickable_agent_card(person_info, viewer):
+    """创建可点击的坐席卡片"""
     status_icon = viewer.status_icons.get(person_info['status'], '❓')
     
     # 状态颜色
@@ -477,10 +477,14 @@ def create_compact_agent_card(person_info, viewer):
         bg_color = f"#{person_info['color']}" if seat_type in ['B席', 'C席'] else "#FFFFFF"
         border_color = "#333"
     
-    # 使用按钮来实现可点击的姓名
+    # 添加点击效果和手型光标
     card_html = f"""
-    <div style="background-color: {bg_color}; border: 1px solid {border_color}; border-radius: 4px; padding: 6px; margin: 2px; min-height: 60px; display: flex; flex-direction: column; justify-content: center;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+    <div style="background-color: {bg_color}; border: 1px solid {border_color}; border-radius: 4px; padding: 6px; margin: 2px; min-height: 60px; display: flex; flex-direction: column; justify-content: center; cursor: pointer; transition: all 0.2s ease;"
+         onmouseover="this.style.transform='scale(1.02)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.15)';"
+         onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='none';"
+         onclick="handleCardClick('{person_info['id']}', '{person_info['name']}')">
+        <div style="font-size: 14px; font-weight: bold; text-align: center; margin-bottom: 4px;">{person_info['name']}</div>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
             <div style="font-size: 12px; color: #666;">{person_info['workplace']}</div>
             <div style="font-size: 16px;">{status_icon}</div>
         </div>
@@ -491,7 +495,7 @@ def create_compact_agent_card(person_info, viewer):
     </div>
     """
     
-    return card_html, person_info['name']
+    return card_html
 
 def create_month_schedule_calendar(month_schedule_data, current_date):
     """创建月度排班日历视图"""
@@ -735,6 +739,29 @@ def main():
         show_agent_detail(viewer, st.session_state.detail_agent_id, st.session_state.detail_agent_name)
         return
     
+    # 添加JavaScript处理卡片点击
+    st.markdown("""
+    <script>
+    function handleCardClick(agentId, agentName) {
+        // 发送数据到Streamlit
+        window.parent.postMessage({
+            type: 'streamlit:setComponentValue',
+            value: {
+                agent_id: agentId,
+                agent_name: agentName
+            }
+        }, '*');
+    }
+    
+    // 监听来自Streamlit的消息
+    window.addEventListener('message', function(event) {
+        if (event.data.type === 'streamlit:componentValue') {
+            // 处理组件值变化
+        }
+    });
+    </script>
+    """, unsafe_allow_html=True)
+    
     # 主界面 - 简化布局
     col_logo, col_title = st.columns([1, 4])
     
@@ -872,7 +899,7 @@ def main():
     # 创建三列
     col_a, col_b, col_c = st.columns(3)
     
-    # A席看板 - 修复网格布局
+    # A席看板
     with col_a:
         agents_a = categorized_data.get('A席', [])
         online_count_a = sum(1 for agent in agents_a if agent['status'] == '搬砖中')
@@ -894,21 +921,21 @@ def main():
                 for j in range(cols_per_row):
                     if i + j < len(agents_a):
                         with cols[j]:
-                            card_html, agent_name = create_compact_agent_card(agents_a[i + j], viewer)
+                            card_html = create_clickable_agent_card(agents_a[i + j], viewer)
                             st.markdown(card_html, unsafe_allow_html=True)
                             
-                            # 添加点击姓名查看详情的按钮
-                            if st.button(f"查看 {agent_name} 的排班", 
+                            # 添加点击处理
+                            if st.button(f"查看 {agents_a[i + j]['name']} 的排班", 
                                        key=f"detail_{agents_a[i + j]['id']}_{i + j}",
                                        use_container_width=True):
                                 st.session_state.show_detail = True
                                 st.session_state.detail_agent_id = agents_a[i + j]['id']
-                                st.session_state.detail_agent_name = agent_name
+                                st.session_state.detail_agent_name = agents_a[i + j]['name']
                                 st.rerun()
         else:
             st.info("暂无A席坐席")
     
-    # B席看板 - 修复网格布局
+    # B席看板
     with col_b:
         agents_b = categorized_data.get('B席', [])
         online_count_b = sum(1 for agent in agents_b if agent['status'] == '搬砖中')
@@ -930,21 +957,21 @@ def main():
                 for j in range(cols_per_row):
                     if i + j < len(agents_b):
                         with cols[j]:
-                            card_html, agent_name = create_compact_agent_card(agents_b[i + j], viewer)
+                            card_html = create_clickable_agent_card(agents_b[i + j], viewer)
                             st.markdown(card_html, unsafe_allow_html=True)
                             
-                            # 添加点击姓名查看详情的按钮
-                            if st.button(f"查看 {agent_name} 的排班", 
+                            # 添加点击处理
+                            if st.button(f"查看 {agents_b[i + j]['name']} 的排班", 
                                        key=f"detail_{agents_b[i + j]['id']}_{i + j}",
                                        use_container_width=True):
                                 st.session_state.show_detail = True
                                 st.session_state.detail_agent_id = agents_b[i + j]['id']
-                                st.session_state.detail_agent_name = agent_name
+                                st.session_state.detail_agent_name = agents_b[i + j]['name']
                                 st.rerun()
         else:
             st.info("暂无B席坐席")
     
-    # C席看板 - 修复网格布局
+    # C席看板
     with col_c:
         agents_c = categorized_data.get('C席', [])
         online_count_c = sum(1 for agent in agents_c if agent['status'] == '搬砖中')
@@ -966,16 +993,16 @@ def main():
                 for j in range(cols_per_row):
                     if i + j < len(agents_c):
                         with cols[j]:
-                            card_html, agent_name = create_compact_agent_card(agents_c[i + j], viewer)
+                            card_html = create_clickable_agent_card(agents_c[i + j], viewer)
                             st.markdown(card_html, unsafe_allow_html=True)
                             
-                            # 添加点击姓名查看详情的按钮
-                            if st.button(f"查看 {agent_name} 的排班", 
+                            # 添加点击处理
+                            if st.button(f"查看 {agents_c[i + j]['name']} 的排班", 
                                        key=f"detail_{agents_c[i + j]['id']}_{i + j}",
                                        use_container_width=True):
                                 st.session_state.show_detail = True
                                 st.session_state.detail_agent_id = agents_c[i + j]['id']
-                                st.session_state.detail_agent_name = agent_name
+                                st.session_state.detail_agent_name = agents_c[i + j]['name']
                                 st.rerun()
         else:
             st.info("暂无C席坐席")
